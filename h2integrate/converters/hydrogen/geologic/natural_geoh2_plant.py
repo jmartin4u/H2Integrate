@@ -129,7 +129,7 @@ class NaturalGeoH2CostModel(GeoH2CostBaseClass):
         cap_well = drill + permit + acreage * rights_acre
 
         # Calculate total capital cost per SUCCESSFUL well
-        completion = inputs["completion_cost"]
+        completion = self.calc_drill_cost(inputs["borehole_depth"])
         success = inputs["success_chance"]
         bare_capex = cap_well / success * 100 + completion
         outputs["bare_capital_cost"] = bare_capex

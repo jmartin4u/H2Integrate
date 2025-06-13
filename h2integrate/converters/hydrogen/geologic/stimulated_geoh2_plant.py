@@ -28,7 +28,6 @@ class StimulatedGeoH2PerformanceConfig(GeoH2PerformanceConfig):
     Parameters (in addition to those in geoh2_baseclass.GeoH2PerformanceConfig):
         -serp_rate:             float [1/s] - Rate constant of serpentinization reaction
         -caprock_depth:         float [m] - Depth below surface of caprock not participating in rxn
-        -borehole_depth:        float [m] - Total depth of borehole (potentially including turns)
         -inj_prod_distance:     float [m] - Distance between injection and production wells
         -reaction_zone_width:   float [m] - Estimated width of rock volume participating in the rxn
         -iron_II_conc:          float [percent] - Mass % of iron (II) in the rock
@@ -38,7 +37,6 @@ class StimulatedGeoH2PerformanceConfig(GeoH2PerformanceConfig):
 
     serp_rate: float = field()  # 1/sec
     caprock_depth: float = field()  # meters
-    borehole_depth: float = field()  # meters
     inj_prod_distance: float = field()  # meters
     reaction_zone_width: float = field()  # meters
     iron_II_conc: float = field()  # wt_pct
@@ -56,14 +54,13 @@ class StimulatedGeoH2PerformanceModel(GeoH2PerformanceBaseClass):
     All inputs come from StimulatedGeoH2PerformanceConfig
 
     Inputs (in addition to those in geoh2_baseclass.GeoH2PerformanceBaseClass):
-        -serp_rate:             float [1/s", val=self.config.serp_rate)
-        -caprock_depth:         float [m", val=self.config.caprock_depth)
-        -borehole_depth:        float [m", val=self.config.borehole_depth)
-        -inj_prod_distance:     float [m", val=self.config.inj_prod_distance)
-        -reaction_zone_width:   float [m", val=self.config.reaction_zone_width)
-        -iron_II_conc:          float [percent", val=self.config.iron_II_conc)
-        -bulk_density:          float [kg/m**3", val=self.config.bulk_density)
-        -water_temp:            float [C", val=self.config.water_temp)
+        -serp_rate:             float [1/s] - Rate constant of serpentinization reaction
+        -caprock_depth:         float [m] - Depth below surface of caprock not participating in rxn
+        -inj_prod_distance:     float [m] - Distance between injection and production wells
+        -reaction_zone_width:   float [m] - Estimated width of rock volume participating in the rxn
+        -iron_II_conc:          float [percent] - Mass % of iron (II) in the rock
+        -bulk_density:          float [kg/m**3] - Bulk density of rock
+        -water_temp:            float [C] - Temperature of water being injected
     Outputs (in addition to those in geoh2_baseclass.GeoH2PerformanceBaseClass):
         -hydrogen_produced:     array [kg/h] - The hydrogen production profile from stimulation
                                         over 1 year (8760 hours)
@@ -77,7 +74,6 @@ class StimulatedGeoH2PerformanceModel(GeoH2PerformanceBaseClass):
 
         self.add_input("serp_rate", units="1/s", val=self.config.serp_rate)
         self.add_input("caprock_depth", units="m", val=self.config.caprock_depth)
-        self.add_input("borehole_depth", units="m", val=self.config.borehole_depth)
         self.add_input("inj_prod_distance", units="m", val=self.config.inj_prod_distance)
         self.add_input("reaction_zone_width", units="m", val=self.config.reaction_zone_width)
         self.add_input("iron_II_conc", units="percent", val=self.config.iron_II_conc)
@@ -163,7 +159,7 @@ class StimulatedGeoH2CostModel(GeoH2CostBaseClass):
         cap_well = drill + permit + acreage * rights_acre
 
         # Calculate total capital cost per SUCCESSFUL well
-        completion = inputs["completion_cost"]
+        completion = self.calc_drill_cost(inputs["borehole_depth"])
         success = inputs["success_chance"]
         bare_capex = cap_well / success * 100 + completion
         outputs["bare_capital_cost"] = bare_capex
