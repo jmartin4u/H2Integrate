@@ -42,6 +42,7 @@ class MethanolPerformanceBaseClass(om.ExplicitComponent):
         self.add_input("h2o_consume_ratio", units="kg/kg", val=self.config.h2o_consume_ratio)
 
         self.add_output("methanol_out", units="kg/h", shape=(8760,))
+        self.add_output("total_methanol_out", units="kg/year")
         self.add_output("co2e_emissions", units="kg/h", shape=(8760,))
         self.add_output("h2o_consumption", units="kg/h", shape=(8760,))
 

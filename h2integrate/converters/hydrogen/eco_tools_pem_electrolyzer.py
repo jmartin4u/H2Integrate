@@ -72,10 +72,16 @@ class ECOElectrolyzerPerformanceModel(ElectrolyzerPerformanceBaseClass):
             units="MW",
             desc="Size of the electrolyzer in MW",
         )
+        self.add_output(
+            "electrolyzer_size_perf",
+            units="MW",
+            desc="Size of the electrolyzer in MW",
+        )
 
     def compute(self, inputs, outputs):
         plant_life = self.options["plant_config"]["plant"]["plant_life"]
         electrolyzer_size_mw = inputs["electrolyzer_size_mw"]
+        outputs["electrolyzer_size_perf"] = electrolyzer_size_mw
         electrolyzer_capex_kw = self.config.electrolyzer_capex
 
         # # IF GRID CONNECTED

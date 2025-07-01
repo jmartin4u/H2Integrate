@@ -77,6 +77,7 @@ class SMRMethanolPlantPerformanceModel(MethanolPerformanceBaseClass):
 
         # Parse outputs
         outputs["methanol_out"] = meoh_kgph
+        outputs["total_methanol_out"] = sum(meoh_kgph)
         outputs["h2o_consumption"] = meoh_kgph * inputs["h2o_consume_ratio"]
         outputs["co2e_emissions"] = meoh_kgph * inputs["co2e_emit_ratio"]
         outputs["meoh_atr_cat_consumption"] = (

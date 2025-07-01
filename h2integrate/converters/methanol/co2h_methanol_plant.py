@@ -1,6 +1,7 @@
 import numpy as np
 from attrs import field, define
 from openmdao.utils.units import convert_units
+import matplotlib.pyplot as plt
 
 from h2integrate.core.utilities import merge_shared_inputs
 from h2integrate.converters.methanol.methanol_baseclass import (
@@ -96,6 +97,7 @@ class CO2HMethanolPlantPerformanceModel(MethanolPerformanceBaseClass):
 
         # Parse outputs
         outputs["methanol_out"] = meoh_kgph
+        outputs["total_methanol_out"] = np.sum(meoh_kgph)
         outputs["co2e_emissions"] = meoh_kgph * inputs["co2e_emit_ratio"]
         outputs["h2o_consumption"] = meoh_kgph * inputs["h2o_consume_ratio"]
         outputs["meoh_syn_cat_in"] = np.sum(meoh_kgph) * inputs["meoh_syn_cat_consume_ratio"]
