@@ -1,0 +1,32 @@
+name: "driver_config"
+description: "This analysis runs a hybrid plant to match the first example in H2I"
+
+general:
+  folder_output: outputs
+
+driver:
+  optimization:
+    flag: True
+    tol: 0.1
+    max_iter: 100
+    solver: COBYLA
+    rhobeg: 500.
+    debug_print: True
+
+design_variables:
+  geoh2:
+    borehole_depth:
+      flag: True
+      lower: 100
+      upper: 12000
+      units: m
+
+constraints:
+  geoh2:
+    LCOH:
+      flag: False
+      upper: 10.
+      units: USD/kg
+
+objective:
+  name: geoh2.LCOH
