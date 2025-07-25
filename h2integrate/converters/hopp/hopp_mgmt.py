@@ -7,6 +7,7 @@ from hopp.simulation.technologies.sites import SiteInfo
 
 def recreate_hopp_config_for_optimization(
     hopp_config: dict,
+    num_turbines: int,
     pv_rating_kw=None,
     wind_turbine_rating_kw=None,
     battery_rating_kw=None,
@@ -28,6 +29,8 @@ def recreate_hopp_config_for_optimization(
         pv_rating_kw (float, optional): Desired system capacity for photovoltaic (PV) in
             kilowatts. If None, PV configuration remains unchanged in the config dictionary.
         wind_turbine_rating_kw (float, optional): Desired turbine rating for wind in kilowatts.
+            If None, wind configuration remains unchanged in the config dictionary.
+        num_turbines (int, optional): Number of turbines.
             If None, wind configuration remains unchanged in the config dictionary.
         battery_rating_kw (float, optional): Desired system capacity for battery in kilowatts.
             If None, battery configuration remains unchanged in the config dictionary.
@@ -88,6 +91,9 @@ def recreate_hopp_config_for_optimization(
             hopp_config_internal["technologies"]["wind"]["turbine_rating_kw"] = (
                 wind_turbine_rating_kw
             )
+
+    if num_turbines is not None and "wind" in hopp_config_internal["technologies"]:
+        hopp_config_internal["technologies"]["wind"]["num_turbines"] = num_turbines
 
     if pv_rating_kw is not None:
         if pv_rating_kw <= min_tol:
@@ -165,6 +171,7 @@ def setup_hopp(
     hopp_config,
     pv_rating_kw=None,
     wind_turbine_rating_kw=None,
+    num_turbines=None,
     battery_rating_kw=None,
     battery_rating_kwh=None,
     electrolyzer_rating=None,
@@ -186,10 +193,13 @@ def setup_hopp(
     hopp_site = SiteInfo(**hopp_config_internal["site"])
 
     # setup hopp interface
-    if np.any([pv_rating_kw, wind_turbine_rating_kw, battery_rating_kw, battery_rating_kwh]):
+    if np.any(
+        [pv_rating_kw, wind_turbine_rating_kw, num_turbines, battery_rating_kw, battery_rating_kwh]
+    ):
         hopp_config_internal = recreate_hopp_config_for_optimization(
             hopp_config=hopp_config_internal,
             wind_turbine_rating_kw=wind_turbine_rating_kw,
+            num_turbines=num_turbines,
             pv_rating_kw=pv_rating_kw,
             battery_rating_kw=battery_rating_kw,
             battery_rating_kwh=battery_rating_kwh,

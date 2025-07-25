@@ -25,10 +25,14 @@ site:
 # this will naturally grow as we mature the interconnected tech
 technology_interconnections: [
   ["hopp", "electrolyzer", "electricity", "cable"],
-#   ["hopp", "methanol", "electricity", "cable"],
   ["electrolyzer", "methanol", "hydrogen", "pipe"],
   ["financials_group_1", "methanol", "LCOE"],
   ["financials_group_1", "methanol", "LCOH"],
+]
+
+demand_interconnectoons: [
+  ["methanol", "electrolyzer", "hydrogen"],
+  ["electrolyzer", "hopp", "electricity"],
 ]
 
 plant:

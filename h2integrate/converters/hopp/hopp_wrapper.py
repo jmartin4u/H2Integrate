@@ -41,7 +41,11 @@ class HOPPComponent(om.ExplicitComponent):
             wind_turbine_rating_kw_init = self.hopp_config["technologies"]["wind"].get(
                 "turbine_rating_kw", 0.0
             )
+            num_turbines_init = self.hopp_config["technologies"]["wind"].get("num_turbines", 0.0)
+            wind_cap_kw = num_turbines_init * wind_turbine_rating_kw_init
             self.add_input("wind_turbine_rating_kw", val=wind_turbine_rating_kw_init, units="kW")
+            self.add_input("num_turbines", val=num_turbines_init, units=None)
+            self.add_input("wind_capacity_kw", val=wind_cap_kw)
 
         if "pv" in self.hopp_config["technologies"]:
             pv_capacity_kw_init = self.hopp_config["technologies"]["pv"].get(
@@ -82,6 +86,36 @@ class HOPPComponent(om.ExplicitComponent):
         )
         self.add_output("CapEx", val=0.0, units="USD", desc="Total capital expenditures")
         self.add_output("OpEx", val=0.0, units="USD/year", desc="Total fixed operating costs")
+
+    def size_from_production_demand(self, elec_demand):
+        # If a production demand is dictated by an upstream component,
+        # set plant capacity to be able to achieve that demand
+        # Must run prob.setup() before calling to be able to call config
+        wind_frac = 0.5  # Expected fraction of electricity from wind
+        wind_cap_fac = 0.4  # Expected capacity factor of wind production
+        pv_cap_fac = 0.2  # Expected capacity factor of wind production
+
+        # Calculate number of wind turbines needed
+        wind_demand = elec_demand * wind_frac
+        wind_capacity_mw = np.sum(wind_demand) / 8760 / wind_cap_fac / 1000
+        turbine_size_mw = (
+            self.hopp_config["technologies"]["wind"].get("turbine_rating_kw", 0.0) / 1000
+        )
+        num_turbines = wind_capacity_mw / turbine_size_mw
+        round_num_turbines = np.round(num_turbines)
+        self.set_val("num_turbines", round_num_turbines)
+        self.set_val("wind_capacity_kw", wind_capacity_mw * 1000)
+
+        # Adjust wind/PV fraction since num_turbines was rounded
+        wind_frac *= round_num_turbines / num_turbines
+
+        # Calcuate size of PV array needed
+        pv_frac = 1 - wind_frac
+        pv_demand = elec_demand * pv_frac
+        pv_capacity_kw = np.sum(pv_demand) / 8760 / pv_cap_fac
+        self.set_val("pv_capacity_kw", pv_capacity_kw)
+
+        return round_num_turbines, pv_capacity_kw
 
     def compute(self, inputs, outputs):
         # Define the keys of interest from the HOPP results that we want to cache
@@ -132,12 +166,14 @@ class HOPPComponent(om.ExplicitComponent):
 
             if "wind" in self.hopp_config["technologies"]:
                 wind_turbine_rating_kw = float(inputs["wind_turbine_rating_kw"])
+                num_turbines = int(inputs["num_turbines"])
             else:
                 wind_turbine_rating_kw = None
 
             self.hybrid_interface = setup_hopp(
                 hopp_config=self.options["tech_config"]["performance_model"]["config"],
                 wind_turbine_rating_kw=wind_turbine_rating_kw,
+                num_turbines=num_turbines,
                 pv_rating_kw=pv_capacity_kw,
                 battery_rating_kw=battery_capacity_kw,
                 battery_rating_kwh=battery_capacity_kwh,

@@ -4,6 +4,7 @@ from pathlib import Path
 import yaml
 import numpy as np
 import openmdao.api as om
+from openmdao.core.constants import _SetupStatus
 
 from h2integrate.core.finances import ProFastComp, AdjustedCapexOpexComp
 from h2integrate.core.utilities import create_xdsm_from_config
@@ -532,7 +533,9 @@ class H2IntegrateModel:
             recorder = om.SqliteRecorder(recorder_config["file"])
             self.model.add_recorder(recorder)
 
-        self.prob.setup()
+        # Run setup if not already done
+        if self.prob._metadata["setup_status"] == _SetupStatus.PRE_SETUP:
+            self.prob.setup()
 
         self.prob.run_driver()
 

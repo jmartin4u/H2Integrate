@@ -1,3 +1,4 @@
+import numpy as np
 from attrs import field, define
 
 from h2integrate.core.utilities import BaseConfig, merge_shared_inputs
@@ -45,6 +46,8 @@ class ECOElectrolyzerPerformanceModelConfig(BaseConfig):
     include_degradation_penalty: bool = field()
     turndown_ratio: float = field(validator=gt_zero)
     electrolyzer_capex: int = field()
+    capacity_factor: float = field()
+    elec_consume_ratio: float = field()
 
 
 class ECOElectrolyzerPerformanceModel(ElectrolyzerPerformanceBaseClass):
@@ -78,6 +81,41 @@ class ECOElectrolyzerPerformanceModel(ElectrolyzerPerformanceBaseClass):
             units="MW",
             desc="Size of the electrolyzer in MW",
         )
+
+        self.add_input("elec_consume_ratio", val=self.config.elec_consume_ratio, units="kW*h/kg")
+        self.add_input("hydrogen_demand", units="kg/h")
+        self.add_output("electricity_consume", shape=8760, units="kW*h/h")
+
+    def calc_production_demand(self):
+        # If a production demand is not dictated by an upstream component,
+        # set production demand equal to the plant capacity * capacity factor
+        # Must run prob.setup() before calling to be able to call config
+        rating_mw = self.config.cluster_size_mw
+        cap_fac = self.config.capacity_factor
+        elec_ratio = self.config.elec_consume_ratio
+        h2_demand = np.ones(8760) * rating_mw * 1000 / elec_ratio * cap_fac
+        self.set_val("hydrogen_demand", h2_demand)
+
+        return h2_demand
+
+    def size_from_production_demand(self, hydrogen_demand):
+        # If a production demand is dictated by an upstream component,
+        # set plant capacity to be able to achieve that demand
+        # Must run prob.setup() before calling to be able to call config
+        cap_fac = self.config.capacity_factor
+        elec_ratio = self.config.elec_consume_ratio
+        rating = np.sum(hydrogen_demand) / 8760 * elec_ratio / cap_fac / 1000
+        self.set_val("electrolyzer_size_mw", rating)
+
+        return rating
+
+    def calc_feedstock_demand(self, hydrogen_demand):
+        # Calculate feedstock demands needed to achieve the production demand
+        demand_dict = {}
+        elec_consume_ratio = self.config.elec_consume_ratio
+        demand_dict["electricity"] = hydrogen_demand * elec_consume_ratio
+
+        return demand_dict
 
     def compute(self, inputs, outputs):
         plant_life = self.options["plant_config"]["plant"]["plant_life"]

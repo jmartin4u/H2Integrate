@@ -4,35 +4,35 @@ description: "Runs a methanol plant and electrolyzer with simple optimization"
 general:
   folder_output: methanol_plant_run
 
-driver:
-  optimization:
-    flag: True
-    tol: 0.1
-    max_iter: 100
-    solver: COBYLA
-    rhobeg: 500.
-    debug_print: True
+# driver:
+#   optimization:
+#     flag: True
+#     tol: 0.1
+#     max_iter: 100
+#     solver: COBYLA
+#     rhobeg: 500.
+#     debug_print: True
 
-design_variables:
-  hopp:
-    pv_capacity_kw:
-      flag: True
-      lower: 100000
-      upper: 200000
-      units: kW
-  electrolyzer:
-    electrolyzer_size_mw:
-      flag: True
-      lower: 200
-      upper: 4000.
-      units: MW
+# design_variables:
+#   hopp:
+#     pv_capacity_kw:
+#       flag: True
+#       lower: 100000
+#       upper: 200000
+#       units: kW
+#   electrolyzer:
+#     electrolyzer_size_mw:
+#       flag: True
+#       lower: 200
+#       upper: 4000.
+#       units: MW
 
-constraints:
-  methanol:
-    total_methanol_out:
-      flag: True
-      lower: 115104000.
-      units: kg/year
+# constraints:
+#   methanol:
+#     total_methanol_out:
+#       flag: True
+#       lower: 115104000.
+#       units: kg/year
 
-objective:
-  name: methanol.LCOM
+# objective:
+#   name: methanol.LCOM
