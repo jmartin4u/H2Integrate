@@ -1,0 +1,49 @@
+name: "driver_config"
+description: "This analysis runs a hybrid plant to match the first example in H2Integrate"
+
+general:
+  folder_output: outputs
+
+driver:
+  optimization:
+    flag: True
+    tol: 0.1
+    catol: 10000
+    max_iter: 10000
+    solver: COBYLA
+    rhobeg: 30
+    debug_print: True
+
+design_variables:
+  hopp:
+    wind_turbine_rating_kw:
+      flag: True
+      lower: 100.
+      upper: 30000.
+      units: kW
+    pv_capacity_kw:
+      flag: True
+      lower: 1000.
+      upper: 300000.
+      units: kW
+  # electrolyzer:
+  #   n_clusters:
+  #     flag: True
+  #     lower: 2.
+  #     upper: 100.
+  #     units: unitless
+
+constraints:
+  ammonia:
+    total_ammonia_produced:
+      flag: True
+      lower: 416090714.
+      units: kg/year
+
+objective:
+  name: financials_group_default.LCOA
+
+recorder:
+  flag: True
+  file: "wind_h2_opt.sql"
+  includes: ["LCOA"]

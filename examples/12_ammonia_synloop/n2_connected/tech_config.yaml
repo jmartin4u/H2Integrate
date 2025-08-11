@@ -110,10 +110,10 @@ technologies:
     model_inputs:
       performance_parameters:
         size_from_N2_demand: False
-        ASU_rated_power_kW: 1000.0
+        ASU_rated_power_kW: 2000.0
         efficiency_kWh_pr_kg_N2: 0.119
       cost_parameters:
-        capex_usd_per_unit: 40.56314
+        capex_usd_per_unit: 40563140
         capex_unit: "mw"
         opex_usd_per_unit_per_year: 0.0
         opex_unit: "mw"
