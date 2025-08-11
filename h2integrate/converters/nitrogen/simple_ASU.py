@@ -91,9 +91,11 @@ class SimpleASUPerformanceModel(om.ExplicitComponent):
                 copy_shape="nitrogen_out",
                 units="kW",
             )
-
+        self.add_input("ASU_capacity_kW", val=self.config.ASU_rated_power_kW, units="kW")
         self.add_output("air_in", val=0.0, shape_by_conn=True, copy_shape=shp_cpy, units="kg/h")
-        self.add_output("ASU_capacity_kW", val=0.0, units="kW", desc="ASU rated capacity in kW")
+        self.add_output(
+            "ASU_capacity_kW_cost", val=0.0, units="kW", desc="ASU rated capacity in kW"
+        )
         self.add_output(
             "rated_N2_kg_pr_hr", val=0.0, units="kg/h", desc="ASU rated capacity in kg-N2/hour"
         )
@@ -163,10 +165,8 @@ class SimpleASUPerformanceModel(om.ExplicitComponent):
             )
             if provided_kW_not_kg:
                 # calculate capacity in kg-N2/hour based on user-provided capacity in kW
-                rated_N2_kg_pr_hr = (
-                    self.config.ASU_rated_power_kW / self.config.efficiency_kWh_pr_kg_N2
-                )
-                ASU_rated_power_kW = self.config.ASU_rated_power_kW
+                rated_N2_kg_pr_hr = inputs["ASU_capacity_kW"] / self.config.efficiency_kWh_pr_kg_N2
+                ASU_rated_power_kW = inputs["ASU_capacity_kW"]
             if provided_kg_not_kW:
                 # calculate capacity in kW based on user-provided capacity in kg-N2/hour
                 rated_N2_kg_pr_hr = self.config.rated_N2_kg_pr_hr
@@ -177,7 +177,7 @@ class SimpleASUPerformanceModel(om.ExplicitComponent):
                 # check that user-provided capacities in kg-N2/hour and kW result
                 # in the same efficiency
                 rated_N2_kg_pr_hr = self.config.rated_N2_kg_pr_hr
-                ASU_rated_power_kW = self.config.ASU_rated_power_kW
+                ASU_rated_power_kW = inputs["ASU_capacity_kW"]
                 if ASU_rated_power_kW / rated_N2_kg_pr_hr != self.config.efficiency_kWh_pr_kg_N2:
                     msg = (
                         f"User defined size for ASU system ({ASU_rated_power_kW} kg N2/hour at "
@@ -186,6 +186,16 @@ class SimpleASUPerformanceModel(om.ExplicitComponent):
                         f"match the ASU efficiency of {self.config.efficiency_kWh_pr_kg_N2}"
                     )
                     raise ValueError(msg)
+
+            n2_profile_in_kg = (
+                np.ones(
+                    [
+                        len(inputs["electricity_in"]),
+                    ]
+                )
+                * ASU_rated_power_kW
+                / self.config.efficiency_kWh_pr_kg_N2
+            )
 
         # calculate the molar mass of air
         air_molar_mass = (
@@ -220,7 +230,7 @@ class SimpleASUPerformanceModel(om.ExplicitComponent):
         # calculate the annual rated production of nitrogen in kg-N2/year
         max_annual_N2 = rated_N2_kg_pr_hr * len(n2_profile_out_kg)
         outputs["rated_N2_kg_pr_hr"] = rated_N2_kg_pr_hr  # rated ASU capacity in kg-N2/hour
-        outputs["ASU_capacity_kW"] = ASU_rated_power_kW  # rated ASU capacity in kW
+        outputs["ASU_capacity_kW_cost"] = ASU_rated_power_kW  # rated ASU capacity in kW
         outputs["air_in"] = air_profile_kg  # air feedstock profile in kg/hour
         outputs["oxygen_out"] = o2_profile_kg  # O2 secondary output profile in kg/hour
         outputs["argon_out"] = ar_profile_kg  # Ar secondary output profile in kg/hour
@@ -318,7 +328,7 @@ class SimpleASUCostModel(om.ExplicitComponent):
             merge_shared_inputs(self.options["tech_config"]["model_inputs"], "cost")
         )
 
-        self.add_input("ASU_capacity_kW", val=0.0, units="kW")
+        self.add_input("ASU_capacity_kW_cost", val=0.0, units="kW")
         self.add_input("rated_N2_kg_pr_hr", val=0.0, units="kg/h")
 
         self.add_output("CapEx", val=0.0, units="USD")
@@ -329,14 +339,14 @@ class SimpleASUCostModel(om.ExplicitComponent):
         capex_k, capex_based_unit = make_cost_unit_multiplier(self.config.capex_unit)
         unit_capex = self.config.capex_usd_per_unit * capex_k
         if capex_based_unit == "power":
-            capex_usd = unit_capex * inputs["ASU_capacity_kW"]
+            capex_usd = unit_capex * inputs["ASU_capacity_kW_cost"]
         else:
             capex_usd = unit_capex * inputs["rated_N2_kg_pr_hr"]
 
         opex_k, opex_based_unit = make_cost_unit_multiplier(self.config.opex_unit)
         unit_opex = self.config.opex_usd_per_unit_per_year * opex_k
         if opex_based_unit == "power":
-            opex_usd_per_year = unit_opex * inputs["ASU_capacity_kW"]
+            opex_usd_per_year = unit_opex * inputs["ASU_capacity_kW_cost"]
         else:
             opex_usd_per_year = unit_opex * inputs["rated_N2_kg_pr_hr"]
 

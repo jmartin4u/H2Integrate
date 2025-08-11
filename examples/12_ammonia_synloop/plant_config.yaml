@@ -28,6 +28,7 @@ technology_interconnections: [
   ["electrolyzer", "h2_storage", "efficiency"],
   ["electrolyzer", "h2_storage", "hydrogen", "pipe"],
   ["h2_storage", "ammonia", "hydrogen", "pipe"],
+  ["air_separator", "ammonia", "nitrogen", "n2_pipe"]
   # etc
 ]
 
@@ -64,6 +65,7 @@ finance_parameters:
     electrolyzer: 2016 # based on IRENA report https://www.irena.org/-/media/Files/IRENA/Agency/Publication/2020/Dec/IRENA_Green_hydrogen_cost_2020.pdf
     h2_storage: 2018 # based on Papadias 2021 and HD SAM
     ammonia: 2021
+    air_separator: 2021
   wind:
     expected_plant_cost: 'none'
 

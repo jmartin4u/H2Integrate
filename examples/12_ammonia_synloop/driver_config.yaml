@@ -3,3 +3,42 @@ description: "This analysis runs a hybrid plant to match the first example in H2
 
 general:
   folder_output: outputs
+
+driver:
+  optimization:
+    flag: True
+    tol: 0.1
+    catol: 10000
+    max_iter: 100
+    solver: COBYLA
+    rhobeg: 30
+    debug_print: True
+
+design_variables:
+  electrolyzer:
+    n_clusters:
+      flag: True
+      lower: 2.
+      upper: 100.
+      units: unitless
+  air_separator:
+    ASU_capacity_kW:
+      flag: True
+      lower: 100
+      upper: 100000
+      units: kW
+
+constraints:
+  ammonia:
+    total_ammonia_produced:
+      flag: True
+      lower: 416090714.
+      units: kg/year
+
+objective:
+  name: financials_group_default.LCOA
+
+recorder:
+  flag: True
+  file: "wind_h2_opt.sql"
+  includes: ["LCOA"]

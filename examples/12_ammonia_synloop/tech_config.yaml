@@ -34,7 +34,6 @@ technologies:
 
       financial_parameters:
         replacement_cost_percent: 0.15 # percent of capex - H2A default case
-
   h2_storage:
     performance_model:
       model: "h2_storage"
@@ -84,7 +83,7 @@ technologies:
         base_cost_year: 2016
         capex_scaling_exponent: 0.6
         labor_scaling_exponent: 0.25
-        asu_capex_base: 236920646 # See ASU + HB capex-NETL source.xlsx
+        asu_capex_base: 0 # See ASU + HB capex-NETL source.xlsx
         synloop_capex_base: 302460908 # See ASU + HB capex-NETL source.xlsx
         heat_capex_base: 7069100
         cool_capex_base: 4799200
@@ -103,3 +102,18 @@ technologies:
         cooling_water_cost_base: 0.000113349938601175
         catalyst_cost_base: 23.19977341
         oxygen_price_base: 0.0285210891617726
+  air_separator:
+    performance_model:
+      model: "simple_ASU_performance"
+    cost_model:
+      model: "simple_ASU_cost"
+    model_inputs:
+      performance_parameters:
+        size_from_N2_demand: False
+        ASU_rated_power_kW: 1000.0
+        efficiency_kWh_pr_kg_N2: 0.119
+      cost_parameters:
+        capex_usd_per_unit: 40.56314
+        capex_unit: "mw"
+        opex_usd_per_unit_per_year: 0.0
+        opex_unit: "mw"
