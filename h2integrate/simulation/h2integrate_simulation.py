@@ -1888,10 +1888,14 @@ def run_simulation(config: H2IntegrateSimulationConfig):
         ):
             if "ng" in iron_config["iron_win"]["product_selection"]:
                 LCA_label = "NG DRI Total Lifetime Average GHG Emissions (kg-CO2e/MT steel)"
+                if "eaf" in iron_config["iron_post"]["product_selection"]:
+                    LCA_label = "NG DRI EAF Total Lifetime Average GHG Emissions (kg-CO2e/MT steel)"
             elif "h2" in iron_config["iron_win"]["product_selection"]:
                 LCA_label = (
-                    "H2 DRI Electrolysis Total Lifetime Average GHG Emissions (kg-CO2e/MT steel)"
+                    "H2 Electrolysis DRI Total Lifetime Average GHG Emissions (kg-CO2e/MT steel)"
                 )
+                if "eaf" in iron_config["iron_post"]["product_selection"]:
+                    LCA_label = "H2 Electrolysis DRI EAF Total Lifetime Average GHG Emissions (kg-CO2e/MT steel)"
             if iron_config["lca_config"]["run_lca"]:
                 gh_fio.save_iron_results(
                     config, iron_performance, iron_costs, iron_finance, lca_df[LCA_label].values[0]
