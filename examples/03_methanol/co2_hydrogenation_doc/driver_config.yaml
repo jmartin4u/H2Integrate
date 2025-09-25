@@ -3,3 +3,37 @@ description: "This analysis runs a hybrid plant to produce methanol from CO2 hyd
 
 general:
   folder_output: outputs
+
+# driver:
+#   optimization:
+#     flag: True
+#     solver: COBYLA
+#     tol: 0.1
+#     catol: 15000
+#     max_iter: 100
+#     rhobeg: 10
+#     debug_print: True
+
+# design_variables:
+#   electrolyzer:
+#     n_clusters:
+#       flag: True
+#       lower: 2.
+#       upper: 100.
+#       units: unitless
+
+# constraints:
+#   electrolyzer:
+#     total_hydrogen_produced:
+#       flag: False
+#       lower: 60500000.
+#       units: kg/year
+
+# objective:
+#   name: finance_subgroup_default.price_methanol
+
+# recorder:
+#   flag: True
+#   file: "coh2_doc_opt.sql"
+#   includes: ["*"]
+#   excludes: ["wind_resource.wind_resource_data"]
