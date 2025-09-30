@@ -98,6 +98,13 @@ class DOCPerformanceModel(MarineCarbonCapturePerformanceBaseClass):
             merge_shared_inputs(self.options["tech_config"]["model_inputs"], "performance")
         )
         super().setup()
+        self.add_input(
+            "power_single_ed_w",
+            val=self.config.power_single_ed_w,
+            units="W",
+            desc="Power of single electrodialysis unit",
+            shape=1,
+        )
         self.add_output(
             "plant_mCC_capacity_mtph",
             val=0.0,
@@ -112,7 +119,7 @@ class DOCPerformanceModel(MarineCarbonCapturePerformanceBaseClass):
 
     def compute(self, inputs, outputs):
         ED_inputs = setup_electrodialysis_inputs(self.config)
-
+        ED_inputs.P_ed1 = float(inputs["power_single_ed_w"])
         co_2_outputs, range_outputs, ed_outputs = echem_mcc.run_electrodialysis_physics_model(
             power_profile_w=inputs["electricity_in"],
             initial_tank_volume_m3=self.config.initial_tank_volume_m3,

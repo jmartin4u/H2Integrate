@@ -74,6 +74,7 @@ class SplitterPerformanceModel(om.ExplicitComponent):
             self.add_input(
                 "fraction_to_priority_tech",
                 val=self.config.fraction_to_priority_tech,
+                units="unitless",
                 desc="Fraction of input power to send to the priority technology (0.0 to 1.0)",
             )
         elif split_mode == "prescribed_electricity":

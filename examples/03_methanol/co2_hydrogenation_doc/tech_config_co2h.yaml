@@ -36,7 +36,7 @@ technologies:
           resize_for_enduse: False
           size_for: 'BOL' #'BOL' (generous) or 'EOL' (conservative)
           hydrogen_dmd:
-        n_clusters: 1
+        n_clusters: 6
         cluster_rating_MW: 40
         pem_control_type: 'basic'
         eol_eff_percent_loss: 10 #eol defined as x% change in efficiency from bol

@@ -264,6 +264,13 @@ class DemandOpenLoopController(ControllerBaseClass):
         )
 
         if isinstance(self.config.demand_profile, int | float):
+            self.add_input(
+                f"{resource_name}_demand",
+                units=f"{self.config.resource_rate_units}/h",
+                val=self.config.demand_profile,
+                shape=1,
+                desc=f"{resource_name} demand",
+            )
             self.config.demand_profile = [self.config.demand_profile] * self.config.n_time_steps
 
         self.add_input(
@@ -323,6 +330,8 @@ class DemandOpenLoopController(ControllerBaseClass):
         soc = deepcopy(init_charge_percent)
 
         demand_profile = inputs[f"{resource_name}_demand_profile"]
+        if f"{resource_name}_demand" in inputs.keys():
+            demand_profile = np.full(self.config.n_time_steps, inputs[f"{resource_name}_demand"])
 
         # initialize outputs
         soc_array = outputs[f"{resource_name}_soc"]
