@@ -187,7 +187,7 @@ class H2IntegrateModel:
         self.cost_models = []
         self.finance_models = []
 
-        combined_performance_and_cost_models = ["hopp", "h2_storage", "wombat"]
+        combined_performance_and_cost_models = ["hopp", "h2_storage", "wombat", "iron"]
 
         # Create a technology group for each technology
         for tech_name, individual_tech_config in self.technology_config["technologies"].items():
@@ -711,7 +711,7 @@ class H2IntegrateModel:
                 tech_configs = group_configs.get("tech_configs")
                 primary_commodity_type = group_configs.get("commodity")
                 # Skip steel finances; it provides its own finances
-                if any(c in tech_configs for c in ("steel", "geoh2")):
+                if any(c in tech_configs for c in ("steel", "iron", "geoh2")):
                     continue
 
                 plant_producing_electricity = False
