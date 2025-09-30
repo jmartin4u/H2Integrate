@@ -132,7 +132,7 @@ class DOCPerformanceModel(MarineCarbonCapturePerformanceBaseClass):
                 pH_i=self.config.pH_i,
             ),
             save_outputs=True,
-            save_plots=True,
+            save_plots=False,
             output_dir=self.options["driver_config"]["general"]["folder_output"],
             plot_range=[3910, 4030],
         )

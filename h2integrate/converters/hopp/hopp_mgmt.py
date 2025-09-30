@@ -248,9 +248,9 @@ def run_hopp(hi, project_lifetime, verbose=True, n_timesteps=8760):
     hopp_results = {
         "hopp_interface": hi,
         "hybrid_plant": hi.system,
-        "wind_out": hi.system.wind.generation_profile,
-        "solar_out": hi.system.pv.generation_profile,
-        "battery_out": hi.system.battery.generation_profile,
+        "wind_out": [],
+        "solar_out": [],
+        "battery_out": [],
         "combined_hybrid_power_production_hopp": grid_outputs.system_pre_interconnect_kwac[
             0:n_timesteps
         ],
@@ -266,6 +266,19 @@ def run_hopp(hi, project_lifetime, verbose=True, n_timesteps=8760):
         "capex": capex,
         "opex": opex,
     }
+    try:
+        hopp_results["wind_out"] = hi.system.wind.generation_profile
+    except AttributeError:
+        pass
+    try:
+        hopp_results["solar_out"] = hi.system.pv.generation_profile
+    except AttributeError:
+        pass
+    try:
+        hopp_results["battery_out"] = hi.system.battery.generation_profile
+    except AttributeError:
+        pass
+
     if verbose:
         print("\nHOPP Results")
         print("Hybrid Annual Energy: ", hopp_results["annual_energies"])

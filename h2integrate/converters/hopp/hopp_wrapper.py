@@ -105,6 +105,13 @@ class HOPPComponent(CostModelBaseClass):
             "opex",
         ]
 
+        out_techs = ["wind", "pv", "battery"]
+        for out_tech in out_techs:
+            if out_tech in self.hopp_config["technologies"].keys():
+                if out_tech == "pv":
+                    out_tech = "solar"
+                keys_of_interest.append(out_tech + "_out")
+
         if self.cache:
             # Create a unique hash for the current configuration to use as a cache key
             config_hash = hashlib.md5(
@@ -183,9 +190,12 @@ class HOPPComponent(CostModelBaseClass):
         outputs["percent_load_missed"] = subset_of_hopp_results["percent_load_missed"]
         outputs["curtailment_percent"] = subset_of_hopp_results["curtailment_percent"]
         outputs["aep"] = subset_of_hopp_results["annual_energies"]["hybrid"]
-        outputs["wind_electricity_out"] = subset_of_hopp_results["wind_out"]
-        outputs["solar_electricity_out"] = subset_of_hopp_results["solar_out"]
-        outputs["battery_electricity_out"] = subset_of_hopp_results["battery_out"]
+        out_techs = ["wind", "pv", "battery"]
+        for out_tech in out_techs:
+            if out_tech in self.hopp_config["technologies"].keys():
+                if out_tech == "pv":
+                    out_tech = "solar"
+                outputs[out_tech + "_electricity_out"] = subset_of_hopp_results[out_tech + "_out"]
         outputs["electricity_out"] = subset_of_hopp_results["combined_hybrid_power_production_hopp"]
         outputs["CapEx"] = subset_of_hopp_results["capex"]
         outputs["OpEx"] = subset_of_hopp_results["opex"]

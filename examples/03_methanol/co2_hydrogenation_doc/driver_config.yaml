@@ -4,77 +4,77 @@ description: "This analysis runs a hybrid plant to produce methanol from CO2 hyd
 general:
   folder_output: outputs
 
-driver:
-  optimization:
-    flag: False
-    solver: COBYLA
-    tol: 0.1
-    catol: 0
-    max_iter: 100
-    rhobeg: 1000000
-    debug_print: True
+# driver:
+#   optimization:
+#     flag: False
+#     solver: COBYLA
+#     tol: 0.1
+#     catol: 0
+#     max_iter: 100
+#     rhobeg: 1000000
+#     debug_print: True
 
-design_variables:
-  electricity_splitter:
-    fraction_to_priority_tech:
-      flag: False
-      lower: 0.1
-      upper: 0.9
-      units: unitless
-  electrolyzer:
-    n_clusters:
-      flag: False
-      lower: 1.
-      upper: 10.
-      units: unitless
-  h2_storage:
-    storage_capacity:
-      flag: False
-      lower: 10.
-      upper: 1000000.
-      units: kW*h
-    hydrogen_demand:
-      flag: False
-      lower: 100.
-      upper: 100000.
-      units: kg/h**2
-  doc:
-    power_single_ed_w:
-      flag: False
-      lower: 100000
-      upper: 100000000.
-      units: W
-  co2_storage:
-    storage_capacity:
-      flag: False
-      lower: 100.
-      upper: 10000000.
-      units: kW*h
-    co2_demand:
-      flag: False
-      lower: 100.
-      upper: 100000.
-      units: kg/h**2
-  methanol:
-    plant_capacity_kgpy:
-      flag: True
-      lower: 1000000
-      upper: 1000000000
-      units: kg/year
+# design_variables:
+#   electricity_splitter:
+#     fraction_to_priority_tech:
+#       flag: False
+#       lower: 0.1
+#       upper: 0.9
+#       units: unitless
+#   electrolyzer:
+#     n_clusters:
+#       flag: False
+#       lower: 1.
+#       upper: 10.
+#       units: unitless
+#   h2_storage:
+#     storage_capacity:
+#       flag: False
+#       lower: 10.
+#       upper: 1000000.
+#       units: kW*h
+#     hydrogen_demand:
+#       flag: False
+#       lower: 100.
+#       upper: 100000.
+#       units: kg/h**2
+#   doc:
+#     power_single_ed_w:
+#       flag: False
+#       lower: 100000
+#       upper: 100000000.
+#       units: W
+#   co2_storage:
+#     storage_capacity:
+#       flag: False
+#       lower: 100.
+#       upper: 10000000.
+#       units: kW*h
+#     co2_demand:
+#       flag: False
+#       lower: 100.
+#       upper: 100000.
+#       units: kg/h**2
+#   methanol:
+#     plant_capacity_kgpy:
+#       flag: True
+#       lower: 1000000
+#       upper: 1000000000
+#       units: kg/year
 
 
-constraints:
-  electrolyzer:
-    n_clusters:
-      flag: False
-      lower: 1.
-      units: unitless
+# constraints:
+#   electrolyzer:
+#     n_clusters:
+#       flag: False
+#       lower: 1.
+#       units: unitless
 
-objective:
-  name: finance_subgroup_default.price_methanol
+# objective:
+#   name: finance_subgroup_default.price_methanol
 
-recorder:
-  flag: True
-  file: "coh2_doc_opt.sql"
-  includes: ["*"]
-  excludes: ["wind_resource.wind_resource_data"]
+# recorder:
+#   flag: True
+#   file: "coh2_doc_opt.sql"
+#   includes: ["*"]
+#   excludes: ["wind_resource.wind_resource_data"]
