@@ -26,11 +26,22 @@ design_variables:
       units: "deg"
       lower: -180.0
       upper: 180.0
+  iron:
+    LCOE:
+      flag: True
+      units: "USD/MW/h"
+      lower: 0
+      upper: 100
+    LCOH:
+      flag: True
+      units: "USD/kg"
+      lower: 0
+      upper: 10
 objective:
-  name: finance_subgroup_pig_iron.LCOP
+  name: iron.LCOI
 recorder:
     file: cases.sql
     overwrite_recorder: true
     flag: true
-    includes: ['site.latitude','site.longitude','finance_subgroup_pig_iron.LCOP']
+    includes: ['site.latitude','site.longitude','iron.LCOI']
     excludes: ['*']
