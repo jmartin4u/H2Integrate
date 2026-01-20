@@ -50,7 +50,6 @@ finance_parameters:
       turbine: 2003 # assumed based on Kottenstette 2004
       lined_rock_cavern: 2018 # based on Papadias 2021 and HD SAM
       none: 2022 # arbitrary
-    h2_pipe_array: 2018 # ANL costs
     h2_transport_pipeline: 2018 # same model for costs as the h2_pipe_array
   wind:
     expected_plant_cost: 'none'
