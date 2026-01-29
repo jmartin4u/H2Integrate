@@ -18,6 +18,7 @@ casenames = [
     "Case 2",
     "Case 3",
     "Case 4",
+    "Case 5",
 ]
 lcois = []
 lcois_old = []
@@ -29,7 +30,7 @@ for casename in casenames:
     model_old.run()
     model.post_process()
     model_old.post_process()
-    lcois.append(float(model.model.get_val("finance_subgroup_pig_iron.price_pig_iron")[0]))
+    lcois.append(float(model.model.get_val("finance_subgroup_iron_ore.price_iron_ore")[0]))
     lcois_old.append(float(model_old.model.get_val("finance_subgroup_pig_iron.price_pig_iron")[0]))
 
 # Compare the LCOIs from iron_wrapper and modular iron

@@ -16,12 +16,15 @@ from h2integrate.postprocess.mapping import (
 from h2integrate.core.h2integrate_model import H2IntegrateModel
 
 
+lat_name = "iron_transport.latitude (deg)"
+lon_name = "iron_transport.longitude (deg)"
+
 # Create H2Integrate model
 # NOTE:
 # If this example has already been run and the cases.csv or cases.sql file are saved in ./ex_28_out,
 # you may leave rerun_model = False to save on run time.
 # Otherwise, set rerun_model = True to produce the cases.csv / cases.sql results files
-rerun_model = True
+rerun_model = False
 if rerun_model:
     model = H2IntegrateModel("iron_map.yaml")
     model.run()
@@ -44,10 +47,14 @@ fig, ax, lcoi_layer_gdf = plot_geospatial_point_heat_map(
     map_preferences={
         "colormap": "turbo",
         "figsize": (10, 8),
+        "markersize": 80,
+        "colorbar_bbox_to_anchor": (0.7, 0.73, 1, 1),
         "colorbar_label": "Levelized Cost of\nSponge Iron [$/kg]",
-        "colorbar_limits": (0.65, 0.7),
+        "colorbar_limits": (0.5, 0.8),
     },
     save_sql_file_to_csv=True,
+    latitude_var_name=lat_name,
+    longitude_var_name=lon_name,
 )
 
 # Add a layer for example ore cost prices from select mines
@@ -57,6 +64,7 @@ fig, ax, ore_cost_layer_gdf = plot_geospatial_point_heat_map(
     map_preferences={
         "colormap": "Greens",
         "marker": "o",
+        "markersize": 80,
         "colorbar_bbox_to_anchor": (0.025, 0.97, 1, 1),
         "colorbar_label": "Levelized Cost of\nIron Ore Pellets\n[$/kg ore]",
         "colorbar_limits": (0.11, 0.14),
@@ -73,8 +81,8 @@ fig, ax, shipping_cost_layer_gdf = plot_geospatial_point_heat_map(
     map_preferences={
         "colormap": "Greys",
         "marker": "d",
-        "markersize": 80,
-        "colorbar_bbox_to_anchor": (0.4, 0.97, 1, 1),
+        "markersize": 160,
+        "colorbar_bbox_to_anchor": (0.7, 0.42, 1, 1),
         "colorbar_label": "Waterway Shipping Cost\n[$/kg ore]",
         "colorbar_limits": (0.11, 0.14),
     },
