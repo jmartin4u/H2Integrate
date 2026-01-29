@@ -42,9 +42,10 @@ fig, ax, lcoi_layer_gdf = plot_geospatial_point_heat_map(
     case_results_fpath=case_results_filepath,
     metric_to_plot="finance_subgroup_sponge_iron.LCOS (USD/kg)",
     map_preferences={
+        "colormap": "turbo",
         "figsize": (10, 8),
         "colorbar_label": "Levelized Cost of\nSponge Iron [$/kg]",
-        "colorbar_limits": (0.4, 1.2),
+        "colorbar_limits": (0.65, 0.7),
     },
     save_sql_file_to_csv=True,
 )

@@ -39,6 +39,16 @@ class IronTransportPerformanceComponent(om.ExplicitComponent):
             merge_shared_inputs(self.options["tech_config"]["model_inputs"], "performance"),
             strict=False,
         )
+        self.add_input(
+            "latitude",
+            val=self.options["plant_config"]["sites"].get("site", {}).get("latitude"),
+            units="deg",
+        )
+        self.add_input(
+            "longitude",
+            val=self.options["plant_config"]["sites"].get("site", {}).get("longitude"),
+            units="deg",
+        )
         self.add_output("land_transport_distance", val=0.0, units="km")
         self.add_output("water_transport_distance", val=0.0, units="km")
         self.add_output("total_transport_distance", val=0.0, units="km")
@@ -77,8 +87,8 @@ class IronTransportPerformanceComponent(om.ExplicitComponent):
         return land_transport_distance
 
     def compute(self, inputs, outputs):
-        lat = self.options["plant_config"]["sites"].get("site", {}).get("latitude")
-        lon = self.options["plant_config"]["sites"].get("site", {}).get("longitude")
+        lat = inputs["latitude"][0]
+        lon = inputs["longitude"][0]
         site_location = (lat, lon)
         shipping_coord_fpath = (
             ROOT_DIR / "converters" / "iron" / "martin_transport" / "shipping_coords.csv"

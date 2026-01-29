@@ -10,12 +10,23 @@ general:
 driver:
   design_of_experiments:
     flag: true
-    debug_print: true
+    debug_print: false
     generator: "csvgen"
-    filename: "ned_REALLY_reduced_sitelist.csv"
+    filename: "ned_reduced_sitelist_rates.csv"
     run_parallel: False
 design_variables:
   site:
+    latitude:
+      flag: True
+      units: "deg"
+      lower: -90.0
+      upper: 90.0
+    longitude:
+      flag: True
+      units: "deg"
+      lower: -180.0
+      upper: 180.0
+  iron_transport:
     latitude:
       flag: True
       units: "deg"
@@ -44,5 +55,5 @@ recorder:
     file: cases.sql
     overwrite_recorder: true
     flag: true
-    includes: ['site.latitude','site.longitude','grid_feedstock.price','ewin_grid_feedstock.price','finance_subgroup_sponge_iron.LCOS']
+    includes: ['site.latitude','site.longitude','iron_transport.iron_transport_cost','finance_subgroup_sponge_iron.LCOS']
     excludes: ['*']

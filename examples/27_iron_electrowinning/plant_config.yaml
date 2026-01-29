@@ -3,8 +3,10 @@ description: "Configures an iron electrowinning system."
 
 sites:
   site:
-    latitude: 41.717
-    longitude: -88.398
+    # latitude: 42.135
+    # longitude: -74.231
+    latitude: 39.836
+    longitude: -86.466
 
 technology_interconnections: [
   # Connect feedstocks to iron mine.

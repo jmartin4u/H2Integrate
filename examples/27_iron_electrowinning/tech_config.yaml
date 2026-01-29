@@ -73,7 +73,7 @@ technologies:
         rated_capacity: 900000.
       cost_parameters:
         cost_year: 2022
-        price: 0.01 #USD/kW
+        price: 0.0895 #USD/kW
         annual_cost: 0.
         start_up_cost: 0.
 
@@ -84,7 +84,7 @@ technologies:
       model: "humbert_stinn_electrowinning_cost"
     model_inputs:
       shared_parameters:
-        electrolysis_type: "ahe"
+        electrolysis_type: "moe"
       performance_parameters:
         ore_fe_wt_pct: 65
         capacity_mw: 578

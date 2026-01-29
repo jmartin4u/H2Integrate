@@ -77,8 +77,8 @@ technologies:
       model: "iron_transport_cost"
     model_inputs:
       performance_parameters:
-        find_closest_ship_site: False
-        shipment_site: "Chicago"
+        find_closest_ship_site: True
+        shipment_site: None
       cost_parameters:
         transport_year: 2022
         cost_year: 2022
