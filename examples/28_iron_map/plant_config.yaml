@@ -1,27 +1,23 @@
 name: "plant_config"
 description: "This plant is located in MN, USA..."
 
-site:
-  latitude: 41.717
-  longitude: -88.398
+sites:
+  site:
+    latitude: 41.717
+    longitude: -88.398
 
-  # array of polygons defining boundaries with x/y coords
-  boundaries: [
-    {
-      x: [0.0, 1000.0, 1000.0, 0.0],
-      y: [0.0, 0.0, 100.0, 1000.0],
-    },
-    {
-      x: [2000.0, 2500.0, 2000.0],
-      y: [2000.0, 2000.0, 2500.0],
-    }
-  ]
-
-# array of arrays containing left-to-right technology
-# interconnections; can support bidirectional connections
-# with the reverse definition.
-# this will naturally grow as we mature the interconnected tech
 technology_interconnections: [
+  # Connect feedstocks to iron mine.
+  # Requires `electricity` and `crude ore`.
+  # Both are set up as generic feedstock components - see tech_config.
+  ["grid_feedstock","iron_mine","electricity","cable"],
+  ["mine_feedstock","iron_mine","crude_ore","pipe"],
+  # Connect feedstocks to iron electrowinning plant.
+  # Requires `electricity` and `iron_ore`.
+  # Electricity is set up as generic feedstock component,
+  # but iron_ore is set up as an output of an iron_mine.
+  ["iron_mine","iron_plant","iron_ore","iron_transport"],
+  ["ewin_grid_feedstock","iron_plant","electricity","cable"],
 ]
 
 plant:
@@ -53,7 +49,17 @@ finance_parameters:
     cost_year_adjustment_inflation: 0.025
     target_dollar_year: 2022
   finance_subgroups:
-    iron:
-      commodity: "iron"
-      commodity_stream: "iron"
-      technologies: ["iron"]
+    iron_ore:
+      commodity: "iron_ore"
+      commodity_stream: "iron_mine"
+      technologies: ["iron_mine", "grid_feedstock", "mine_feedstock"]
+    sponge_iron:
+      commodity: "sponge_iron"
+      commodity_stream: "iron_plant"
+      technologies:
+      - "iron_mine"
+      - "grid_feedstock"
+      - "mine_feedstock"
+      - "iron_transport"
+      - "iron_plant"
+      - "ewin_grid_feedstock"

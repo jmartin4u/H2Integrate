@@ -275,7 +275,9 @@ class HumbertStinnEwinCostComponent(CostModelBaseClass):
         rectifier_capex = a3 * V**e3 * N**e4
 
         # Capex outputs
-        outputs["CapEx"] = processing_capex + electrolysis_capex + rectifier_capex
+        outputs["CapEx"] = (
+            (processing_capex + electrolysis_capex + rectifier_capex) * 764.52 / 4901.86
+        )
         outputs["processing_capex"] = processing_capex
         outputs["electrolysis_capex"] = electrolysis_capex
         outputs["rectifier_capex"] = rectifier_capex

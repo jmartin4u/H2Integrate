@@ -12,7 +12,7 @@ driver:
     flag: true
     debug_print: true
     generator: "csvgen"
-    filename: "ned_reduced_sitelist.csv"
+    filename: "ned_REALLY_reduced_sitelist.csv"
     run_parallel: False
 design_variables:
   site:
@@ -26,22 +26,23 @@ design_variables:
       units: "deg"
       lower: -180.0
       upper: 180.0
-  iron:
-    LCOE:
+  grid_feedstock:
+    price:
       flag: True
-      units: "USD/MW/h"
+      units: "USD/MW"
       lower: 0
-      upper: 100
-    LCOH:
+      upper: 1000
+  ewin_grid_feedstock:
+    price:
       flag: True
-      units: "USD/kg"
+      units: "USD/kW"
       lower: 0
-      upper: 10
+      upper: 1000
 objective:
-  name: iron.LCOI
+  name: finance_subgroup_sponge_iron.LCOS
 recorder:
     file: cases.sql
     overwrite_recorder: true
     flag: true
-    includes: ['site.latitude','site.longitude','iron.LCOI']
+    includes: ['site.latitude','site.longitude','grid_feedstock.price','ewin_grid_feedstock.price','finance_subgroup_sponge_iron.LCOS']
     excludes: ['*']

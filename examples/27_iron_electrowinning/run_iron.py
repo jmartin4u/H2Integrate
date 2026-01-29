@@ -20,7 +20,7 @@ from h2integrate.core.h2integrate_model import H2IntegrateModel
 model = H2IntegrateModel("27_iron_electrowinning.yaml")
 
 # Define the electrowinning types as a list
-electrolysis_types = ["ahe", "mse", "moe"]
+electrolysis_types = ["moe"]  # "ahe", "mse",
 lcois = []
 
 for electrolysis_type in electrolysis_types:
