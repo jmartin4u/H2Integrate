@@ -67,7 +67,7 @@ fig, ax, ore_cost_layer_gdf = plot_geospatial_point_heat_map(
         "markersize": 80,
         "colorbar_bbox_to_anchor": (0.025, 0.97, 1, 1),
         "colorbar_label": "Levelized Cost of\nIron Ore Pellets\n[$/kg ore]",
-        "colorbar_limits": (0.11, 0.14),
+        "colorbar_limits": (0.1, 0.11),
     },
     fig=fig,
     ax=ax,
