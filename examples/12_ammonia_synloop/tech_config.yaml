@@ -95,6 +95,15 @@ technologies:
         energy_capex: 310  # $/kWh from 2024 ATB year 2025
         power_capex: 311  # $/kW from 2024 ATB year 2025
         opex_fraction: 0.025
+  electricity_splitter:
+    performance_model:
+      model: GenericSplitterPerformanceModel
+    model_inputs:
+      performance_parameters:
+        split_mode: prescribed_commodity
+        commodity: electricity
+        commodity_rate_units: MW
+        prescribed_commodity_to_priority_tech: 28.1  # Calculated from ammonia production_capacity and energy_demand
   electrolyzer:
     performance_model:
       model: ECOElectrolyzerPerformanceModel
