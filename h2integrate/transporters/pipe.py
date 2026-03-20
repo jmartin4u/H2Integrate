@@ -9,7 +9,16 @@ class PipePerformanceModel(om.ExplicitComponent):
     def initialize(self):
         self.options.declare(
             "transport_item",
-            values=["hydrogen", "co2", "methanol", "ammonia", "nitrogen", "natural_gas"],
+            values=[
+                "hydrogen",
+                "co2",
+                "methanol",
+                "ammonia",
+                "nitrogen",
+                "natural_gas",
+                "wellhead_gas",
+                "water",
+            ],
         )
 
     def setup(self):
@@ -18,20 +27,24 @@ class PipePerformanceModel(om.ExplicitComponent):
         self.output_name = transport_item + "_out"
 
         if transport_item == "natural_gas":
-            units = "MMBtu"
+            units = "MMBtu/h"
+        elif transport_item == "water":
+            units = "galUS"
+        elif transport_item == "co2":
+            units = "kg/h"
         else:
             units = "kg/s"
 
         self.add_input(
             self.input_name,
-            val=0.0,
+            val=-1.0,
             shape_by_conn=True,
             copy_shape=self.output_name,
             units=units,
         )
         self.add_output(
             self.output_name,
-            val=0.0,
+            val=-1.0,
             shape_by_conn=True,
             copy_shape=self.input_name,
             units=units,

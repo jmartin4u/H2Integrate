@@ -2,23 +2,10 @@ import pytest
 import openmdao.api as om
 from pytest import fixture
 
-from h2integrate import EXAMPLE_DIR
 from h2integrate.converters.solar.solar_pysam import PYSAMSolarPlantPerformanceModel
 from h2integrate.converters.solar.atb_res_com_pv_cost import ATBResComPVCostModel
 from h2integrate.converters.solar.atb_utility_pv_cost import ATBUtilityPVCostModel
-
-
-@fixture
-def solar_resource_dict():
-    pv_resource_dir = EXAMPLE_DIR / "11_hybrid_energy_plant" / "tech_inputs" / "weather" / "solar"
-    pv_filename = "30.6617_-101.7096_psmv3_60_2013.csv"
-    pv_resource_dict = {
-        "latitude": 30.6617,
-        "longitude": -101.7096,
-        "year": 2013,
-        "solar_resource_filepath": pv_resource_dir / pv_filename,
-    }
-    return pv_resource_dict
+from h2integrate.resource.solar.nlr_developer_goes_api_models import GOESAggregatedSolarAPI
 
 
 @fixture
@@ -93,27 +80,7 @@ def residential_pv_performance_params():
     return tech_params
 
 
-@fixture
-def plant_config():
-    pv_resource_dir = EXAMPLE_DIR / "11_hybrid_energy_plant" / "tech_inputs" / "weather" / "solar"
-    pv_filename = "30.6617_-101.7096_psmv3_60_2013.csv"
-    pv_resource_dict = {
-        "latitude": 30.6617,
-        "longitude": -101.7096,
-        "year": 2013,
-        "solar_resource_filepath": pv_resource_dir / pv_filename,
-    }
-    return {
-        "plant": {
-            "plant_life": 30,
-            "simulation": {
-                "n_timesteps": 8760,
-            },
-        },
-        "site": pv_resource_dict,
-    }
-
-
+@pytest.mark.unit
 def test_utility_pv_cost(
     utility_scale_pv_performance_params, solar_resource_dict, plant_config, subtests
 ):
@@ -131,30 +98,30 @@ def test_utility_pv_cost(
         }
     }
 
-    plant_info = {
-        "plant_life": 30,
-        "simulation": {
-            "n_timesteps": 8760,
-            "dt": 3600,
-        },
-    }
-
     prob = om.Problem()
+    solar_resource = GOESAggregatedSolarAPI(
+        plant_config=plant_config,
+        resource_config=solar_resource_dict,
+        driver_config={},
+    )
     perf_comp = PYSAMSolarPlantPerformanceModel(
-        plant_config={"site": solar_resource_dict, "plant": plant_info},
+        plant_config=plant_config,
         tech_config=tech_config_dict,
+        driver_config={},
     )
     cost_comp = ATBUtilityPVCostModel(
         plant_config=plant_config,
         tech_config=tech_config_dict,
+        driver_config={},
     )
 
+    prob.model.add_subsystem("solar_resource", solar_resource, promotes=["*"])
     prob.model.add_subsystem("pv_perf", perf_comp, promotes=["*"])
     prob.model.add_subsystem("pv_cost", cost_comp, promotes=["*"])
     prob.setup()
     prob.run_model()
 
-    pv_size_kWac = prob.get_val("pv_perf.capacity_kWac")[0]
+    pv_size_kWac = prob.get_val("pv_perf.system_capacity_AC")[0]
     capital_cost = prob.get_val("pv_cost.CapEx")[0]
     operating_cost = prob.get_val("pv_cost.OpEx")[0]
 
@@ -169,6 +136,7 @@ def test_utility_pv_cost(
         )
 
 
+@pytest.mark.unit
 def test_commercial_pv_cost(
     commercial_pv_performance_params, solar_resource_dict, plant_config, subtests
 ):
@@ -189,24 +157,21 @@ def test_commercial_pv_cost(
         }
     }
 
-    plant_info = {
-        "plant_life": 30,
-        "simulation": {
-            "n_timesteps": 8760,
-            "dt": 3600,
-        },
-    }
-
     prob = om.Problem()
+    solar_resource = GOESAggregatedSolarAPI(
+        plant_config=plant_config,
+        resource_config=solar_resource_dict,
+        driver_config={},
+    )
+
     perf_comp = PYSAMSolarPlantPerformanceModel(
-        plant_config={"site": solar_resource_dict, "plant": plant_info},
-        tech_config=tech_config_dict,
+        plant_config=plant_config, tech_config=tech_config_dict, driver_config={}
     )
     cost_comp = ATBResComPVCostModel(
-        plant_config=plant_config,
-        tech_config=tech_config_dict,
+        plant_config=plant_config, tech_config=tech_config_dict, driver_config={}
     )
 
+    prob.model.add_subsystem("solar_resource", solar_resource, promotes=["*"])
     prob.model.add_subsystem("pv_perf", perf_comp, promotes=["*"])
     prob.model.add_subsystem("pv_cost", cost_comp, promotes=["*"])
     prob.setup()
@@ -224,6 +189,7 @@ def test_commercial_pv_cost(
         )
 
 
+@pytest.mark.unit
 def test_residential_pv_cost(
     residential_pv_performance_params, solar_resource_dict, plant_config, subtests
 ):
@@ -244,31 +210,28 @@ def test_residential_pv_cost(
         }
     }
 
-    plant_info = {
-        "plant_life": 30,
-        "simulation": {
-            "n_timesteps": 8760,
-            "dt": 3600,
-        },
-    }
-
     prob = om.Problem()
-    perf_comp = PYSAMSolarPlantPerformanceModel(
-        plant_config={"site": solar_resource_dict, "plant": plant_info},
-        tech_config=tech_config_dict,
+    solar_resource = GOESAggregatedSolarAPI(
+        plant_config=plant_config,
+        resource_config=solar_resource_dict,
+        driver_config={},
     )
-    cost_comp = ATBResComPVCostModel(
+    perf_comp = PYSAMSolarPlantPerformanceModel(
         plant_config=plant_config,
         tech_config=tech_config_dict,
+        driver_config={},
     )
-
+    cost_comp = ATBResComPVCostModel(
+        plant_config=plant_config, tech_config=tech_config_dict, driver_config={}
+    )
+    prob.model.add_subsystem("solar_resource", solar_resource, promotes=["*"])
     prob.model.add_subsystem("pv_perf", perf_comp, promotes=["*"])
     prob.model.add_subsystem("pv_cost", cost_comp, promotes=["*"])
     prob.setup()
     prob.run_model()
 
-    capital_cost = prob.get_val("pv_cost.CapEx")[0]
-    operating_cost = prob.get_val("pv_cost.OpEx")[0]
+    capital_cost = prob.get_val("pv_cost.CapEx", units="USD")[0]
+    operating_cost = prob.get_val("pv_cost.OpEx", units="USD/year")[0]
 
     with subtests.test("Residential Capital Cost"):
         assert pytest.approx(capital_cost, rel=1e-6) == shared_value * cost_dict["capex_per_kWdc"]

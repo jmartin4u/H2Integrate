@@ -6,13 +6,13 @@ from wombat import Simulation
 from wombat.core.library import load_yaml
 
 from h2integrate.core.utilities import merge_shared_inputs
-from h2integrate.converters.hydrogen.eco_tools_pem_electrolyzer import (
+from h2integrate.converters.hydrogen.pem_electrolyzer import (
     ECOElectrolyzerPerformanceModel,
     ECOElectrolyzerPerformanceModelConfig,
 )
 
 
-@define
+@define(kw_only=True)
 class WOMBATModelConfig(ECOElectrolyzerPerformanceModelConfig):
     """
     library_path: Path to the WOMBAT library directory, relative from this file
@@ -38,10 +38,10 @@ class WOMBATElectrolyzerModel(ECOElectrolyzerPerformanceModel):
     def setup(self):
         super().setup()
         self.config = WOMBATModelConfig.from_dict(
-            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "performance")
+            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "performance"),
+            additional_cls_name=self.__class__.__name__,
         )
         plant_life = int(self.options["plant_config"]["plant"]["plant_life"])
-        self.add_output("capacity_factor", val=0.0, units=None)
         self.add_output("CapEx", val=0.0, units="USD", desc="Capital expenditure")
         self.add_output("OpEx", val=0.0, units="USD/year", desc="Operational expenditure")
         self.add_output(
@@ -59,11 +59,14 @@ class WOMBATElectrolyzerModel(ECOElectrolyzerPerformanceModel):
             desc="Percent hydrogen lost due to O&M maintenance",
         )
         self.add_output(
-            "electrolyzer_availability", val=0.0, units=None, desc="Electrolyzer availability"
+            "electrolyzer_availability",
+            val=0.0,
+            units="unitless",
+            desc="Electrolyzer availability",
         )
 
     def compute(self, inputs, outputs, discrete_inputs, discrete_outputs):
-        super().compute(inputs, outputs)
+        super().compute(inputs, outputs, discrete_inputs, discrete_outputs)
 
         # Ensure library_path is a Path object
         library_path = self.config.library_path
@@ -121,11 +124,13 @@ class WOMBATElectrolyzerModel(ECOElectrolyzerPerformanceModel):
         outputs["hydrogen_out"] = hydrogen_out_with_availability
 
         # Compute total hydrogen produced (sum over the year)
-        outputs["total_hydrogen_produced"] = np.sum(hydrogen_out_with_availability)
+        # TODO: make below total rather than annual
+        outputs["annual_hydrogen_produced"] = np.sum(hydrogen_out_with_availability)
 
         # Compute percent hydrogen lost due to O&M maintenance
+        # TODO: make below total rather than annual
         percent_hydrogen_lost = 100 * (
-            1 - outputs["total_hydrogen_produced"] / np.sum(original_hydrogen_out)
+            1 - outputs["annual_hydrogen_produced"][0] / np.sum(original_hydrogen_out)
         )
 
         outputs["percent_hydrogen_lost"] = percent_hydrogen_lost

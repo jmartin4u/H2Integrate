@@ -1,16 +1,21 @@
 import importlib.util
-from pathlib import Path
 
-import yaml
 import numpy as np
+import networkx as nx
 import openmdao.api as om
+import matplotlib.pyplot as plt
 
+from h2integrate.core.sites import SiteLocationComponent
 from h2integrate.core.utilities import create_xdsm_from_config
+from h2integrate.core.file_utils import get_path, find_file, load_yaml
 from h2integrate.finances.finances import AdjustedCapexOpexComp
-from h2integrate.core.resource_summer import ElectricitySumComp
-from h2integrate.core.supported_models import supported_models, electricity_producing_techs
+from h2integrate.core.supported_models import supported_models, is_electricity_producer
 from h2integrate.core.inputs.validation import load_tech_yaml, load_plant_yaml, load_driver_yaml
 from h2integrate.core.pose_optimization import PoseOptimization
+from h2integrate.postprocess.sql_to_csv import convert_sql_to_csv_summary
+from h2integrate.control.control_strategies.pyomo_controller_baseclass import (
+    PyomoControllerBaseClass,
+)
 
 
 try:
@@ -20,9 +25,9 @@ except ImportError:
 
 
 class H2IntegrateModel:
-    def __init__(self, config_file):
+    def __init__(self, config_input):
         # read in config file; it's a yaml dict that looks like this:
-        self.load_config(config_file)
+        self.load_config(config_input)
 
         # load in supported models
         self.supported_models = supported_models.copy()
@@ -30,8 +35,16 @@ class H2IntegrateModel:
         # load custom models
         self.collect_custom_models()
 
-        self.prob = om.Problem()
+        # Check if create_om_reports is specified in driver config
+        create_om_reports = self.driver_config.get("general", {}).get("create_om_reports", True)
+        self.prob = om.Problem(reports=create_om_reports)
         self.model = self.prob.model
+
+        # track if setup has been called via boolean
+        self.setup_has_been_called = False
+
+        # initialize recorder_path attribute
+        self.recorder_path = None
 
         # create site-level model
         # this is an OpenMDAO group that contains all the site information
@@ -58,44 +71,200 @@ class H2IntegrateModel:
         # might be an analysis or optimization
         self.create_driver_model()
 
-    def load_config(self, config_file):
-        config_path = Path(config_file)
-        with config_path.open() as file:
-            config = yaml.safe_load(file)
+    def _load_component_config(self, config_key, config_value, config_path, validator_func):
+        """Helper method to load and validate a component configuration.
+
+        Args:
+            config_key (str): Key name for the configuration (e.g., "driver_config")
+            config_value (dict | str): Configuration value from main config
+            config_path (Path | None): Path to main config file (None if dict)
+            validator_func (callable): Validation function to apply
+
+        Returns:
+            tuple: (validated_config, config_file_path, parent_path)
+                - validated_config: Validated configuration dictionary
+                - config_file_path: Path to config file (None if dict)
+                - parent_path: Parent directory of config file (None if dict)
+        """
+        if isinstance(config_value, dict):
+            # Config provided as embedded dictionary
+            return validator_func(config_value), None, None
+        else:
+            # Config provided as filepath - resolve location
+            if config_path is None:
+                file_path = get_path(config_value)
+            else:
+                file_path = find_file(config_value, config_path.parent)
+
+            # Store parent directory for resolving custom model paths later
+            parent_path = file_path.parent
+            return validator_func(file_path), file_path, parent_path
+
+    def load_config(self, config_input):
+        """Load and validate configuration files for the H2I model.
+
+        This method loads the main configuration and the component configuration files
+        (driver, technology, and plant). Each configuration can be provided either as
+        a dictionary or as a file path. When file paths are provided, the method
+        resolves them using multiple search strategies.
+
+        Args:
+            config_input (dict | str | Path): Main configuration containing references to
+                driver, technology, and plant configurations. This can be:
+
+                - A dictionary containing the configuration data directly.
+                - A string or Path pointing to a YAML file containing the configuration.
+
+        Behavior:
+
+            - If ``config_input`` is a dict, uses it directly as the main configuration.
+            - If ``config_input`` is a path, uses ``get_path()`` to resolve and load the YAML
+              file from multiple search locations (absolute path, relative to CWD, relative to
+              the H2Integrate package).
+            - For component configs provided as dicts, validates them directly using
+              ``load_driver_yaml``, ``load_tech_yaml``, and ``load_plant_yaml``.
+            - For component configs provided as paths and a file-based main config, uses
+              ``find_file()`` to search relative to the main config directory first, then
+              falls back to other search locations (CWD, H2Integrate package, glob patterns).
+            - For component configs provided as paths and a dict-based main config, uses
+              ``get_path()`` with standard search locations (absolute, CWD, H2Integrate package).
+
+        Sets:
+            self.name (str): Name of the system from main config.
+            self.system_summary (str): Summary description from main config.
+            self.driver_config (dict): Validated driver configuration.
+            self.technology_config (dict): Validated technology configuration.
+            self.plant_config (dict): Validated plant configuration.
+            self.driver_config_path (Path | None): Path to driver config file (None if dict).
+            self.tech_config_path (Path | None): Path to technology config file (None if dict).
+            self.plant_config_path (Path | None): Path to plant config file (None if dict).
+            self.tech_parent_path (Path | None): Parent directory of technology config file.
+            self.plant_parent_path (Path | None): Parent directory of plant config file.
+
+        Note:
+            The parent path attributes (``tech_parent_path``, ``plant_parent_path``) are used
+            later to resolve relative paths to custom models and other referenced files within
+            the technology and plant configurations.
+
+        Example:
+            >>> # Using filepaths
+            >>> model = H2IntegrateModel("main_config.yaml")
+
+            >>> # Using mixed dict and filepaths
+            >>> config = {
+            ...     "name": "my_system",
+            ...     "driver_config": "driver.yaml",
+            ...     "technology_config": {"technologies": {...}},
+            ...     "plant_config": "plant.yaml",
+            ... }
+            >>> model = H2IntegrateModel(config)
+        """
+        # Load main configuration
+        if isinstance(config_input, dict):
+            config = config_input
+            config_path = None
+        else:
+            config_path = get_path(config_input)
+            config = load_yaml(config_path)
 
         self.name = config.get("name")
         self.system_summary = config.get("system_summary")
 
-        # Load each config file as yaml and save as dict on this object
-        self.driver_config = load_driver_yaml(config_path.parent / config.get("driver_config"))
-        self.tech_config_path = config_path.parent / config.get("technology_config")
-        self.technology_config = load_tech_yaml(self.tech_config_path)
-        self.plant_config = load_plant_yaml(config_path.parent / config.get("plant_config"))
+        # Load and validate each component configuration using the helper method
+        self.driver_config, self.driver_config_path, _ = self._load_component_config(
+            "driver_config", config.get("driver_config"), config_path, load_driver_yaml
+        )
 
-    def collect_custom_models(self):
-        """
-        Collect custom models from the technology configuration.
+        self.technology_config, self.tech_config_path, self.tech_parent_path = (
+            self._load_component_config(
+                "technology_config", config.get("technology_config"), config_path, load_tech_yaml
+            )
+        )
 
-        This method loads custom models from the specified directory and adds them to the
+        self.plant_config, self.plant_config_path, self.plant_parent_path = (
+            self._load_component_config(
+                "plant_config", config.get("plant_config"), config_path, load_plant_yaml
+            )
+        )
+
+        for name, vals in self.technology_config["technologies"].items():
+            if "control_strategy" in vals:
+                controller_model_name = vals["control_strategy"]["model"]
+                controller_cls = supported_models.get(controller_model_name)
+                if controller_cls is not None and issubclass(
+                    controller_cls, PyomoControllerBaseClass
+                ):
+                    model_inputs = self.technology_config["technologies"][name]["model_inputs"]
+                    if (
+                        "control_parameters" not in model_inputs
+                        or model_inputs["control_parameters"] is None
+                    ):
+                        model_inputs["control_parameters"] = {"tech_name": name}
+                    else:
+                        model_inputs["control_parameters"]["tech_name"] = name
+
+    def create_custom_models(self, model_config, config_parent_path, model_types, prefix=""):
+        """This method loads custom models from the specified directory and adds them to the
         supported models dictionary.
+
+        Args:
+            model_config (dict): dictionary containing models, such as
+                ``technology_config["technologies"]``.
+            config_parent_path (Path): parent path of the input file that ``model_config`` comes
+                from. Should either be ``plant_config_path.parent`` or
+                ``tech_config_path.parent``.
+            model_types (list[str]): list of key names to search for in
+                ``model_config.values()``. Should be
+                ``["performance_model", "cost_model", "financial_model"]`` if ``model_config``
+                is ``technology_config["technologies"]``.
+            prefix (str, optional): Prefix of ``model_class_name``, ``model_location`` and
+                ``model``. Defaults to "". Should be ``"finance_"`` if looking for custom
+                system finance models.
         """
 
-        for tech_name, tech_config in self.technology_config["technologies"].items():
-            for model_type in ["performance_model", "cost_model", "finance_model"]:
-                if model_type in tech_config:
-                    model_name = tech_config[model_type].get("model")
+        included_custom_models = {}
+
+        for name, config in model_config.items():
+            for model_type in model_types:
+                if model_type in config:
+                    model_name = config[model_type].get(f"{prefix}model")
+
+                    # Don't create new custom model or raise an error if the current custom model
+                    # has already been processed. This can happen if there are 2 or more instances
+                    # of the same custom model. Also check that all instances of the same custom
+                    # model tech name use the same class definition.
+                    if model_name in included_custom_models:
+                        model_class_name = config[model_type].get(f"{prefix}model_class_name")
+                        if (
+                            model_class_name
+                            != included_custom_models[model_name]["model_class_name"]
+                        ):
+                            raise (
+                                ValueError(
+                                    "User has specified two custom models using the same model"
+                                    "name ({model_name}), but with different model classes. "
+                                    "Technologies defined with different classes must have "
+                                    "different technology names."
+                                )
+                            )
+                        else:
+                            continue
+
                     if (model_name not in self.supported_models) and (model_name is not None):
-                        model_class_name = tech_config[model_type].get("model_class_name")
-                        model_location = tech_config[model_type].get("model_location")
+                        model_class_name = config[model_type].get(f"{prefix}model_class_name")
+                        model_location = config[model_type].get(f"{prefix}model_location")
 
                         if not model_class_name or not model_location:
                             raise ValueError(
-                                f"Custom {model_type} for {tech_name} must specify "
-                                "'model_class_name' and 'model_location'."
+                                f"Custom {model_type} for {name} must specify "
+                                f"'{prefix}model_class_name' and '{prefix}model_location'."
                             )
 
                         # Resolve the full path of the model location
-                        model_path = self.tech_config_path.parent / model_location
+                        if config_parent_path is not None:
+                            model_path = find_file(model_location, config_parent_path)
+                        else:
+                            model_path = find_file(model_location)
 
                         if not model_path.exists():
                             raise FileNotFoundError(
@@ -111,13 +280,18 @@ class H2IntegrateModel:
                         # Add the custom model to the supported models dictionary
                         self.supported_models[model_name] = custom_model_class
 
+                        # Add the custom model to custom models dictionary
+                        included_custom_models[model_name] = {
+                            "model_class_name": model_class_name,
+                        }
+
                     else:
                         if (
-                            tech_config[model_type].get("model_class_name") is not None
-                            or tech_config[model_type].get("model_location") is not None
+                            config[model_type].get(f"{prefix}model_class_name") is not None
+                            or config[model_type].get(f"{prefix}model_location") is not None
                         ):
                             msg = (
-                                f"Custom model_class_name or model_location "
+                                f"Custom {prefix}model_class_name or {prefix}model_location "
                                 f"specified for '{model_name}', "
                                 f"but '{model_name}' is a built-in H2Integrate "
                                 "model. Using built-in model instead is not allowed. "
@@ -126,22 +300,84 @@ class H2IntegrateModel:
                             )
                             raise ValueError(msg)
 
+    def collect_custom_models(self):
+        """Collect custom models from the technology configuration and
+        system finance models found in the plant configuration.
+        """
+        # check for custom technology models
+        self.create_custom_models(
+            self.technology_config["technologies"],
+            self.tech_parent_path,
+            ["performance_model", "cost_model", "finance_model"],
+        )
+
+        # check for custom finance models
+        if "finance_parameters" in self.plant_config:
+            finance_groups = self.plant_config["finance_parameters"]["finance_groups"]
+
+            # check for single custom finance models
+            if "model_inputs" in finance_groups:
+                self.create_custom_models(
+                    self.plant_config,
+                    self.plant_parent_path,
+                    ["finance_groups"],
+                    prefix="finance_",
+                )
+
+            # check for named finance models
+            if any("model_inputs" in v for k, v in finance_groups.items()):
+                finance_model_names = [k for k, v in finance_groups.items() if "model_inputs" in v]
+                finance_groups_config = {"finance_groups": finance_groups}
+                self.create_custom_models(
+                    finance_groups_config,
+                    self.plant_parent_path,
+                    finance_model_names,
+                    prefix="finance_",
+                )
+
     def create_site_model(self):
+        """
+        Create and configure site component(s) for the system.
+
+        This method initializes a site group for each site provided in
+        ``self.plant_config["sites"]``.
+
+        This method creates an OpenMDAO Group for each site that contains the location definition
+        and resources models (if provided in the configuration) for that site.
+        """
+        # Loop through each site defined in the plant config
+        for site_name, site_info in self.plant_config["sites"].items():
+            # Reorganize the plant config to be formatted as expected by the
+            # resource models
+            plant_config_reorg = {
+                "site": site_info,
+                "plant": self.plant_config["plant"],
+            }
+
+            # Create the site group and resource models
+            site_group = self.create_site_group(plant_config_reorg, site_info)
+
+            # Add the site group to the system model
+            self.model.add_subsystem(site_name, site_group)
+
+    def create_site_group(self, plant_config_dict: dict, site_config: dict):
+        """
+        Create and configure a site Group for the input site configuration.
+
+        Args:
+            plant_config_dict (dict): The plant config dictionary formatted for the resource models
+            site_config (dict): Information that defines each site, such as latitude,
+                longitude, and resource models.
+
+        Returns:
+            om.Group: OpenMDAO group for a site
+        """
+        # Initialize the site group
         site_group = om.Group()
 
-        # Create a site-level component
-        site_config = self.plant_config.get("site", {})
-        site_component = om.IndepVarComp()
-        site_component.add_output("latitude", val=site_config.get("latitude", 0.0))
-        site_component.add_output("longitude", val=site_config.get("longitude", 0.0))
-        site_component.add_output("elevation_m", val=site_config.get("elevation_m", 0.0))
-
-        # Add boundaries if they exist
-        site_config = self.plant_config.get("site", {})
-        boundaries = site_config.get("boundaries", [])
-        for i, boundary in enumerate(boundaries):
-            site_component.add_output(f"boundary_{i}_x", val=np.array(boundary.get("x", [])))
-            site_component.add_output(f"boundary_{i}_y", val=np.array(boundary.get("y", [])))
+        # Create a site location component (defines latitude, longitude, etc)
+        site_inputs = {k: v for k, v in site_config.items() if k != "resources"}
+        site_component = SiteLocationComponent(site_inputs)
 
         site_group.add_subsystem("site_component", site_component, promotes=["*"])
 
@@ -153,13 +389,14 @@ class H2IntegrateModel:
                 resource_class = self.supported_models.get(resource_model)
                 if resource_class:
                     resource_component = resource_class(
-                        plant_config=self.plant_config,
+                        plant_config=plant_config_dict,
                         resource_config=resource_inputs,
                         driver_config=self.driver_config,
                     )
-                    site_group.add_subsystem(resource_name, resource_component)
-
-        self.model.add_subsystem("site", site_group, promotes=["*"])
+                    site_group.add_subsystem(
+                        resource_name, resource_component, promotes_inputs=["latitude", "longitude"]
+                    )
+        return site_group
 
     def create_plant_model(self):
         """
@@ -184,16 +421,60 @@ class H2IntegrateModel:
         self.tech_names = []
         self.performance_models = []
         self.control_strategies = []
+        self.dispatch_rule_sets = []
         self.cost_models = []
         self.finance_models = []
 
-        combined_performance_and_cost_models = ["hopp", "h2_storage", "wombat"]
+        combined_performance_and_cost_models = [
+            "HOPPComponent",
+            "h2_storage",
+            "WOMBATElectrolyzerModel",
+            "IronComponent",
+            "ArdWindPlantModel",
+        ]
+
+        if any(tech == "site" for tech in self.technology_config["technologies"]):
+            msg = (
+                "'site' is an invalid technology name and is reserved for top-level "
+                "variables. Please change the technology name to something else."
+            )
+            raise NameError(msg)
+
+        reserved_techs = {"pipe", "cable"}
+        # Use set intersection to find any reserved names present in the config
+        invalid_techs = sorted(
+            set(self.technology_config["technologies"]).intersection(reserved_techs)
+        )
+
+        if invalid_techs:
+            if len(invalid_techs) == 1:
+                invalid_tech_msg = f"'{invalid_techs[0]}' is an invalid technology name and is"
+            else:
+                names_str = ", ".join(f"'{tech}'" for tech in invalid_techs)
+                invalid_tech_msg = f"{names_str} are invalid technology names and are"
+
+            msg = (
+                f"{invalid_tech_msg} reserved for internal H2I transport models. "
+                "Please change the technology name to something else."
+            )
+            raise NameError(msg)
 
         # Create a technology group for each technology
         for tech_name, individual_tech_config in self.technology_config["technologies"].items():
             perf_model = individual_tech_config.get("performance_model", {}).get("model")
 
-            if perf_model is not None and "feedstock" in perf_model:
+            if "control_parameters" in individual_tech_config["model_inputs"]:
+                if "tech_name" in individual_tech_config["model_inputs"]["control_parameters"]:
+                    provided_tech_name = individual_tech_config["model_inputs"][
+                        "control_parameters"
+                    ]["tech_name"]
+                    if tech_name != provided_tech_name:
+                        raise ValueError(
+                            f"tech_name in control_parameters ({provided_tech_name}) must match "
+                            f"the top-level name of the tech group ({tech_name})"
+                        )
+
+            if perf_model == "FeedstockPerformanceModel":
                 comp = self.supported_models[perf_model](
                     driver_config=self.driver_config,
                     plant_config=self.plant_config,
@@ -211,18 +492,15 @@ class H2IntegrateModel:
                 individual_tech_config.get("finance_model", {}).get("model")
                 if (
                     perf_model
-                    and perf_model == cost_model
-                    and perf_model in combined_performance_and_cost_models
+                    and (perf_model == cost_model)
+                    and (perf_model in combined_performance_and_cost_models)
                 ):
-                    comp = self.supported_models[perf_model](
-                        driver_config=self.driver_config,
-                        plant_config=self.plant_config,
-                        tech_config=individual_tech_config,
-                    )
-                    tech_group.add_subsystem(tech_name, comp, promotes=["*"])
-                    self.performance_models.append(comp)
-                    self.cost_models.append(comp)
-                    self.finance_models.append(comp)
+                    # Catch dispatch rules for systems that have the same performance & cost models
+                    if "dispatch_rule_set" in individual_tech_config:
+                        control_object = self._process_model(
+                            "dispatch_rule_set", individual_tech_config, tech_group
+                        )
+                        self.control_strategies.append(control_object)
 
                     # Catch control models for systems that have the same performance & cost models
                     if "control_strategy" in individual_tech_config:
@@ -230,23 +508,38 @@ class H2IntegrateModel:
                             "control_strategy", individual_tech_config, tech_group
                         )
                         self.control_strategies.append(control_object)
+
+                    comp = self.supported_models[perf_model](
+                        driver_config=self.driver_config,
+                        plant_config=self.plant_config,
+                        tech_config=individual_tech_config,
+                    )
+                    om_model_object = tech_group.add_subsystem(tech_name, comp, promotes=["*"])
+                    self.performance_models.append(om_model_object)
+                    self.cost_models.append(om_model_object)
+                    self.finance_models.append(om_model_object)
+
                     continue
 
                 # Process the models
-                # TODO: integrate finance_model into the loop below
-                model_types = ["performance_model", "control_strategy", "cost_model"]
+                # TODO: integrate financial_model into the loop below
+                model_types = [
+                    "dispatch_rule_set",
+                    "control_strategy",
+                    "performance_model",
+                    "cost_model",
+                ]
+
                 for model_type in model_types:
                     if model_type in individual_tech_config:
-                        model_object = self._process_model(
+                        om_model_object = self._process_model(
                             model_type, individual_tech_config, tech_group
                         )
                         if "control_strategy" in model_type:
                             plural_model_type_name = "control_strategies"
                         else:
                             plural_model_type_name = model_type + "s"
-                        getattr(self, plural_model_type_name).append(model_object)
-                    elif model_type == "performance_model":
-                        raise KeyError("Model definition requires 'performance_model'.")
+                        getattr(self, plural_model_type_name).append(om_model_object)
 
                 # Process the finance models
                 if "finance_model" in individual_tech_config:
@@ -270,7 +563,7 @@ class H2IntegrateModel:
 
         for tech_name, individual_tech_config in self.technology_config["technologies"].items():
             cost_model = individual_tech_config.get("cost_model", {}).get("model")
-            if cost_model is not None and "feedstock" in cost_model:
+            if cost_model == "FeedstockCostModel":
                 comp = self.supported_models[cost_model](
                     driver_config=self.driver_config,
                     plant_config=self.plant_config,
@@ -282,7 +575,7 @@ class H2IntegrateModel:
         # Generalized function to process model definitions
         model_name = individual_tech_config[model_type]["model"]
         model_object = self.supported_models[model_name]
-        tech_group.add_subsystem(
+        om_model_object = tech_group.add_subsystem(
             model_name,
             model_object(
                 driver_config=self.driver_config,
@@ -291,7 +584,7 @@ class H2IntegrateModel:
             ),
             promotes=["*"],
         )
-        return model_object
+        return om_model_object
 
     def create_finance_model(self):
         """
@@ -319,9 +612,12 @@ class H2IntegrateModel:
             technologies, associated commodity, and finance model(s).
             Each subgroup is nested under a unique name of your choice under
             ["finance_parameters"]["subgroups"] in the plant configuration.
-            * Subsystems such as ``ElectricitySumComp``, ``AdjustedCapexOpexComp``,
-            and the selected finance models are added to each subgroup's
-            finance group.
+            * Subsystems such as ``AdjustedCapexOpexComp`` and
+            ``GenericProductionSummerPerformanceModel``, and the selected finance
+            models are added to each subgroup's finance group.
+            * If `commodity_stream` is provided for a subgroup, the output of the
+            technology specified as the `commodity_stream` must be the same as the
+            specified commodity for that subgroup.
             * Supports both global finance models and technology-specific finance
             models. Technology-specific finance models are defined in the technology
             configuration.
@@ -350,7 +646,7 @@ class H2IntegrateModel:
 
             >>> self.plant_config["finance_parameters"]["finance_group"] = {
             ...     "commodity": "hydrogen",
-            ...     "finance_model": "ProFastComp",
+            ...     "finance_model": "ProFastLCO",
             ...     "model_inputs": {"discount_rate": 0.08},
             ... }
             >>> self.create_finance_model()
@@ -434,6 +730,7 @@ class H2IntegrateModel:
                 "finance_groups", [default_finance_group_name]
             )
             tech_names = subgroup_params.get("technologies")
+            commodity_stream = subgroup_params.get("commodity_stream", None)
 
             if isinstance(finance_group_names, str):
                 finance_group_names = [finance_group_names]
@@ -455,21 +752,79 @@ class H2IntegrateModel:
                         "Available "
                         f"technologies: {list(self.technology_config['technologies'].keys())}"
                     )
+            if commodity_stream is not None:
+                if "combiner" not in commodity_stream and commodity_stream not in tech_names:
+                    raise UserWarning(
+                        f"The technology specific for the commodity_stream '{commodity_stream}' "
+                        f"is not included in subgroup '{subgroup_name}' technologies list."
+                        f" Subgroup '{subgroup_name}' includes technologies: {tech_names}."
+                    )
 
             finance_subgroups.update(
                 {
                     subgroup_name: {
                         "tech_configs": tech_configs,
                         "commodity": commodity,
+                        "commodity_stream": commodity_stream,
+                        "is_system_finance_model": True,
                     }
                 }
             )
             finance_subgroup = om.Group()
 
-            if commodity == "electricity":
-                finance_subgroup.add_subsystem(
-                    "electricity_sum", ElectricitySumComp(tech_configs=tech_configs)
+            # Default logic for handling cases without specified commodity streams
+            if commodity_stream is None:
+                if commodity == "electricity":
+                    elec_tech_names = [
+                        tech for tech in tech_configs if is_electricity_producer(tech)
+                    ]
+                    if len(elec_tech_names) != 1:
+                        msg = (
+                            f"Multiple electricity producing technologies found in finance subgroup"
+                            f" '{subgroup_name}'. Please specify the commodity_stream for the "
+                            f"finance subgroup {subgroup_name}."
+                        )
+                        raise ValueError(msg)
+                    else:
+                        finance_subgroups[subgroup_name].update(
+                            {"commodity_stream": elec_tech_names[0]}
+                        )
+
+                else:
+                    # Default logic for tech-names and the primary commodity streams
+                    default_techs_to_commodities = {
+                        "electrolyzer": "hydrogen",
+                        "geoh2": "hydrogen",
+                        "ammonia": "ammonia",
+                        "doc": "co2",
+                        "oae": "co2",
+                        "methanol": "methanol",
+                        "air_separator": "nitrogen",
+                    }
+
+                    for default_tech, tech_commodity in default_techs_to_commodities.items():
+                        if commodity == tech_commodity and any(
+                            default_tech in tech_name for tech_name in tech_names
+                        ):
+                            commodity_stream_tech_name = [
+                                tech_name for tech_name in tech_names if default_tech in tech_name
+                            ]
+                            finance_subgroups[subgroup_name].update(
+                                {"commodity_stream": commodity_stream_tech_name[0]}
+                            )
+
+                # Check if a default commodity_stream was found, throw error if not
+                missing_commodity_stream = (
+                    finance_subgroups[subgroup_name].get("commodity_stream", None) is None
                 )
+                if missing_commodity_stream and len(tech_names) > 1:
+                    msg = (
+                        "Could not find a default technology to use as the commodity stream "
+                        f"for commodity {finance_subgroups[subgroup_name]['commodity']}. "
+                        "Please specify the `commodity_stream` for finance subgroup "
+                        f"{subgroup_name}."
+                    )
+                    raise UserWarning(msg)
 
             # Add adjusted capex/opex
             adjusted_capex_opex_comp = AdjustedCapexOpexComp(
@@ -482,6 +837,9 @@ class H2IntegrateModel:
                 "adjusted_capex_opex_comp", adjusted_capex_opex_comp, promotes=["*"]
             )
 
+            # Initialize counter to check if invalid combination of finance
+            # groups exist within a finance subgroup
+            n_tech_finances_in_group = 0
             for finance_group_name in finance_group_names:
                 # check if using tech-specific finance model
                 if any(
@@ -494,8 +852,13 @@ class H2IntegrateModel:
 
                     # this is created in create_technologies()
                     if tech_finance_group_name is not None:
+                        n_tech_finances_in_group += 1
                         # tech specific finance models are created in create_technologies()
-                        # and do not need to be included in the general finance models
+                        # and do not need to be included in the system finance models.
+                        # set commodity_stream to None so that inputs needed for system-level
+                        # finance models are not connected to tech-specific finance models.
+                        # finance_subgroups[subgroup_name].update({"commodity_stream": None})
+                        finance_subgroups[subgroup_name].update({"is_system_finance_model": False})
                         continue
 
                 # if not using a tech-specific finance group, get the finance model and inputs for
@@ -539,12 +902,18 @@ class H2IntegrateModel:
                 # check if multiple finance models are specified for the subgroup
                 if len(finance_group_names) > 1:
                     # check that the finance model groups do not include tech-specific finances
-                    non_tech_finances = [
-                        k
-                        for k in finance_group_names
-                        if k in self.plant_config["finance_parameters"]["finance_groups"]
-                    ]
+                    finance_groups = self.plant_config["finance_parameters"]["finance_groups"]
+                    non_tech_finances = [k for k in finance_group_names if k in finance_groups]
+                    tech_finances = [k for k in finance_group_names if k not in finance_groups]
 
+                    if n_tech_finances_in_group > 0 and non_tech_finances:
+                        msg = (
+                            f"Cannot run a tech-specific finance model ({tech_finances}) in the "
+                            f"same finance subgroup as a system-level finance model "
+                            f"({non_tech_finances}). Please modify the finance_groups in finance "
+                            f"subgroup {subgroup_name}."
+                        )
+                        raise ValueError(msg)
                     # if multiple non-tech specific finance model groups are specified for the
                     # subgroup, the outputs of the finance model must have unique names to
                     # avoid errors.
@@ -590,8 +959,12 @@ class H2IntegrateModel:
             if len(connection) == 4:
                 source_tech, dest_tech, transport_item, transport_type = connection
 
-                # make the connection_name based on source, dest, item, type
-                connection_name = f"{source_tech}_to_{dest_tech}_{transport_type}"
+                if transport_type in self.tech_names:
+                    # if the transport type is already a technology, skip creating a new component
+                    connection_name = f"{transport_type}"
+                else:
+                    # make the connection_name based on source, dest, item, type
+                    connection_name = f"{source_tech}_to_{dest_tech}_{transport_type}"
 
                 # Get the performance model of the source_tech
                 source_tech_config = self.technology_config["technologies"].get(source_tech, {})
@@ -600,22 +973,35 @@ class H2IntegrateModel:
 
                 # If the source is a feedstock, make sure to connect the amount of
                 # feedstock consumed from the technology back to the feedstock cost model
-                if cost_model_name is not None and "feedstock" in cost_model_name:
+                if cost_model_name == "FeedstockCostModel":
                     self.plant.connect(
                         f"{dest_tech}.{transport_item}_consumed",
                         f"{source_tech}.{transport_item}_consumed",
                     )
 
-                if perf_model_name is not None and "feedstock" in perf_model_name:
+                if perf_model_name == "FeedstockPerformanceModel":
                     source_tech = f"{source_tech}_source"
 
                 # Create the transport object
-                connection_component = self.supported_models[transport_type](
-                    transport_item=transport_item
-                )
+                # allow transport_type to be from self.tech_name
+                if transport_type in self.tech_names:
+                    # Connect the connection component to the destination technology
+                    pass
+                else:
+                    connection_component = self.supported_models[transport_type](
+                        transport_item=transport_item
+                    )
 
-                # Add the connection component to the model
-                self.plant.add_subsystem(connection_name, connection_component)
+                    # Add the connection component to the model
+                    self.plant.add_subsystem(connection_name, connection_component)
+
+                    # Reorder the subsystems so transporters comes after their source technology
+                    # NOTE: the private method must be used because setup() has not been called
+                    subsystem_names = list(self.plant._static_subsystems_allprocs)
+                    subsystem_names.remove(connection_name)
+                    insert_idx = subsystem_names.index(source_tech) + 1
+                    subsystem_names.insert(insert_idx, connection_name)
+                    self.plant.set_order(subsystem_names)
 
                 # Check if the source technology is a splitter
                 if "splitter" in source_tech:
@@ -628,16 +1014,10 @@ class H2IntegrateModel:
 
                     # Connect the splitter output to the connection component
                     self.plant.connect(
-                        f"{source_tech}.electricity_out{splitter_counts[source_tech]}",
+                        f"{source_tech}.{transport_item}_out{splitter_counts[source_tech]}",
                         f"{connection_name}.{transport_item}_in",
                     )
 
-                elif "storage" in source_tech:
-                    # Connect the source technology to the connection component
-                    self.plant.connect(
-                        f"{source_tech}.{transport_item}_out",
-                        f"{connection_name}.{transport_item}_in",
-                    )
                 else:
                     # Connect the source technology to the connection component
                     self.plant.connect(
@@ -657,14 +1037,16 @@ class H2IntegrateModel:
                     # Connect the connection component to the destination technology
                     self.plant.connect(
                         f"{connection_name}.{transport_item}_out",
-                        f"{dest_tech}.electricity_in{combiner_counts[dest_tech]}",
+                        f"{dest_tech}.{transport_item}_in{combiner_counts[dest_tech]}",
                     )
-
-                elif "storage" in dest_tech:
-                    # Connect the connection component to the destination technology
+                    # Connect the source tech design and performance info to the combiner
                     self.plant.connect(
-                        f"{connection_name}.{transport_item}_out",
-                        f"{dest_tech}.{transport_item}_in",
+                        f"{source_tech}.rated_{transport_item}_production",
+                        f"{dest_tech}.rated_{transport_item}_production{combiner_counts[dest_tech]}",
+                    )
+                    self.plant.connect(
+                        f"{source_tech}.capacity_factor",
+                        f"{dest_tech}.{transport_item}_capacity_factor{combiner_counts[dest_tech]}",
                     )
 
                 else:
@@ -677,7 +1059,7 @@ class H2IntegrateModel:
             elif len(connection) == 3:
                 # connect directly from source to dest
                 source_tech, dest_tech, connected_parameter = connection
-                if isinstance(connected_parameter, (tuple, list)):
+                if isinstance(connected_parameter, tuple | list):
                     source_parameter, dest_parameter = connected_parameter
                     self.plant.connect(
                         f"{source_tech}.{source_parameter}", f"{dest_tech}.{dest_parameter}"
@@ -693,6 +1075,46 @@ class H2IntegrateModel:
 
         resource_to_tech_connections = self.plant_config.get("resource_to_tech_connections", [])
 
+        if "sites" in self.plant_config:
+            resource_models = {}
+            for site_grp, site_grp_inputs in self.plant_config["sites"].items():
+                for resource_key, resource_params in site_grp_inputs.get("resources", {}).items():
+                    resource_models[f"{site_grp}-{resource_key}"] = resource_params
+
+        resource_source_connections = [c[0] for c in resource_to_tech_connections]
+        # Check if there is a missing resource to tech connection or missing resource model
+        if len(resource_models) != len(resource_source_connections):
+            if len(resource_models) > len(resource_source_connections):
+                # more resource models than resources connected to technologies
+                non_connected_resource = [
+                    k for k in resource_models if k not in resource_source_connections
+                ]
+                # check if theres a resource model that isn't connected to a technology
+                if len(non_connected_resource) > 0:
+                    msg = (
+                        "Some resources are not connected to a technology. Resource models "
+                        f"{non_connected_resource} are not included in "
+                        "`resource_to_tech_connections`. Please connect these resources "
+                        "to their technologies under `resource_to_tech_connections` in "
+                        "the plant config file."
+                    )
+                    raise ValueError(msg)
+            if len(resource_source_connections) > len(resource_models):
+                # more resources connected than resource models
+                missing_resource = [
+                    k for k in resource_source_connections if k not in resource_models
+                ]
+                # check if theres a resource model that isn't connected to a technology
+                if len(missing_resource) > 0:
+                    msg = (
+                        "Missing resource(s) are not defined but are connected to a technology. "
+                        f"Missing resource(s) are {missing_resource}. "
+                        "Please check ``resource_to_tech_connections`` in the plant config file "
+                        "or add the missing resources"
+                        " to plant_config['site']['resources']."
+                    )
+                    raise ValueError(msg)
+
         for connection in resource_to_tech_connections:
             if len(connection) != 3:
                 err_msg = f"Invalid resource to tech connection: {connection}"
@@ -703,45 +1125,35 @@ class H2IntegrateModel:
             # Connect the resource output to the technology input
             self.model.connect(f"{resource_name}.{variable}", f"{tech_name}.{variable}")
 
-        # TODO: connect outputs of the technology models to the cost and finance models of the
+        # connect outputs of the technology models to the cost and finance models of the
         # same name if the cost and finance models are not None
         if "finance_parameters" in self.plant_config:
             # Connect the outputs of the technology models to the appropriate finance groups
             for group_id, group_configs in self.finance_subgroups.items():
                 tech_configs = group_configs.get("tech_configs")
                 primary_commodity_type = group_configs.get("commodity")
-                # Skip steel finances; it provides its own finances
-                if any(c in tech_configs for c in ("steel", "methanol", "geoh2")):
-                    continue
+                commodity_stream = group_configs.get("commodity_stream")
+                is_system_finance_model = group_configs.get("is_system_finance_model")
 
-                plant_producing_electricity = False
-
-                # Loop through technologies and connect electricity outputs to the ExecComp
-                # Only connect if the technology is included in at least one commodity's stackup
-                # and in this finance group
-                for tech_name in tech_configs.keys():
-                    if (
-                        tech_name in electricity_producing_techs
-                        # and tech_name in all_included_techs
-                        and primary_commodity_type == "electricity"
-                    ):
-                        self.plant.connect(
-                            f"{tech_name}.electricity_out",
-                            f"finance_subgroup_{group_id}.electricity_sum.electricity_{tech_name}",
-                        )
-                        plant_producing_electricity = True
-
-                if plant_producing_electricity and primary_commodity_type == "electricity":
-                    # Connect total electricity produced to the finance group
+                if is_system_finance_model:
+                    # Connect the rated commodity production and capacity factor
+                    # for system-level finance models
                     self.plant.connect(
-                        f"finance_subgroup_{group_id}.electricity_sum.total_electricity_produced",
-                        f"finance_subgroup_{group_id}.total_electricity_produced",
+                        f"{commodity_stream}.rated_{primary_commodity_type}_production",
+                        f"finance_subgroup_{group_id}.rated_{primary_commodity_type}_production",
+                    )
+
+                    self.plant.connect(
+                        f"{commodity_stream}.capacity_factor",
+                        f"finance_subgroup_{group_id}.capacity_factor",
                     )
 
                 # Only connect technologies that are included in the finance stackup
                 for tech_name in tech_configs.keys():
                     # For now, assume splitters and combiners do not add any costs
                     if "splitter" in tech_name or "combiner" in tech_name:
+                        continue
+                    if tech_name == "cable" or tech_name == "pipe":
                         continue
 
                     self.plant.connect(
@@ -759,84 +1171,276 @@ class H2IntegrateModel:
                         f"finance_subgroup_{group_id}.cost_year_{tech_name}",
                     )
 
-                    if "electrolyzer" in tech_name:
+                    if is_system_finance_model and "transport" not in tech_name:
+                        # connect replacement schedule to system-level finance models
                         self.plant.connect(
-                            f"{tech_name}.time_until_replacement",
-                            f"finance_subgroup_{group_id}.{tech_name}_time_until_replacement",
-                        )
-                        if primary_commodity_type == "hydrogen":
-                            self.plant.connect(
-                                f"{tech_name}.total_hydrogen_produced",
-                                f"finance_subgroup_{group_id}.total_hydrogen_produced",
-                            )
-
-                    if "ammonia" in tech_name and primary_commodity_type == "ammonia":
-                        self.plant.connect(
-                            f"{tech_name}.total_ammonia_produced",
-                            f"finance_subgroup_{group_id}.total_ammonia_produced",
-                        )
-
-                    if (
-                        "doc" in tech_name or "oae" in tech_name
-                    ) and primary_commodity_type == "co2":
-                        self.plant.connect(
-                            f"{tech_name}.co2_capture_mtpy",
-                            f"finance_subgroup_{group_id}.co2_capture_kgpy",
-                        )
-
-                    if "air_separator" in tech_name and primary_commodity_type == "nitrogen":
-                        self.plant.connect(
-                            f"{tech_name}.total_nitrogen_produced",
-                            f"finance_subgroup_{group_id}.total_nitrogen_produced",
+                            f"{tech_name}.replacement_schedule",
+                            f"finance_subgroup_{group_id}.replacement_schedule_{tech_name}",
                         )
 
         self.plant.options["auto_order"] = True
 
-        # Check if there are any connections FROM a finance group to ammonia
-        # This handles the case where LCOH is computed in the finance group and passed to ammonia
+        # Check if there are any loops in the technology interconnections
+        # If loops are present, add solvers to resolve the coupling
+        # Create a directed graph from the technology interconnections
+        G = nx.DiGraph()
         for connection in technology_interconnections:
-            if connection[0].startswith("finance_subgroup_") and connection[1] == "ammonia":
-                # If the connection is from a finance group, set solvers for the
-                # plant to resolve the coupling
-                self.plant.nonlinear_solver = om.NonlinearBlockGS()
-                self.plant.linear_solver = om.DirectSolver()
-                break
+            source = connection[0]
+            destination = connection[1]
+            G.add_edge(source, destination)
+
+        # Check if there are any cycles (loops) in the graph
+        if list(nx.simple_cycles(G)):
+            # If cycles are found, set solvers for the plant to resolve the coupling
+            self.plant.nonlinear_solver = om.NonlinearBlockGS()
+            self.plant.linear_solver = om.DirectSolver()
+
+        # initialize dispatch rules connection list
+        tech_to_dispatch_connections = self.plant_config.get("tech_to_dispatch_connections", [])
+
+        for connection in tech_to_dispatch_connections:
+            if len(connection) != 2:
+                err_msg = f"Invalid tech to dispatching_tech_name connection: {connection}"
+                raise ValueError(err_msg)
+
+            tech_name, dispatching_tech_name = connection
+
+            if tech_name == dispatching_tech_name:
+                continue
+            else:
+                # Connect the dispatch rules output to the dispatching_tech_name input
+                self.model.connect(
+                    f"{tech_name}.dispatch_block_rule_function",
+                    f"{dispatching_tech_name}.dispatch_block_rule_function_{tech_name}",
+                )
 
         if (pyxdsm is not None) and (len(technology_interconnections) > 0):
-            create_xdsm_from_config(self.plant_config)
+            try:
+                create_xdsm_from_config(self.plant_config)
+            except FileNotFoundError as e:
+                print(f"Unable to create system XDSM diagram. Error: {e}")
 
     def create_driver_model(self):
         """
-        Add the driver to the OpenMDAO model.
+        Add the driver to the OpenMDAO model and add recorder.
         """
+
+        myopt = PoseOptimization(self.driver_config)
         if "driver" in self.driver_config:
-            myopt = PoseOptimization(self.driver_config)
             myopt.set_driver(self.prob)
             myopt.set_objective(self.prob)
             myopt.set_design_variables(self.prob)
             myopt.set_constraints(self.prob)
+        # Add a recorder if specified in the driver config
+        if "recorder" in self.driver_config:
+            self.recorder_path = myopt.set_recorders(self.prob)
+
+    def setup(self):
+        """
+        Extremely light wrapper to setup the OpenMDAO problem and track setup status.
+        """
+        self.setup_has_been_called = True
+        self.prob.setup()
 
     def run(self):
         # do model setup based on the driver config
         # might add a recorder, driver, set solver tolerances, etc
-
-        # Add a recorder if specified in the driver config
-        if "recorder" in self.driver_config:
-            recorder_config = self.driver_config["recorder"]
-            recorder = om.SqliteRecorder(recorder_config["file"])
-            self.model.add_recorder(recorder)
-
-        self.prob.setup()
+        if not self.setup_has_been_called:
+            self.prob.setup()
+            self.setup_has_been_called = True
 
         self.prob.run_driver()
 
-    def post_process(self):
-        """
-        Post-process the results of the OpenMDAO model.
+    def post_process(self, print_results=True, summarize_sql=False, show_plots=False):
+        """Post-process the results of the OpenMDAO model.
 
-        Right now, this just means printing the inputs and outputs to all systems in the model.
-        We currently exclude any variables with "resource_data" in the name, since those
-        are large dictionary variables that are not correctly formatted when printing.
+        Prints the inputs and outputs to all systems in the model, excluding any
+        variables with "resource_data" in the name since those are large dictionary
+        variables that are not correctly formatted when printing.
+
+        Args:
+            print_results (bool): If True, print a summary of all model inputs
+                and outputs. Defaults to True.
+            summarize_sql (bool): If True and a recorder file was written,
+                convert the SQL recorder file to a CSV summary. Defaults to False.
+            show_plots (bool): If True, run post-processing plots for any
+                performance models that support them. Defaults to False.
         """
-        self.prob.model.list_inputs(units=True, print_mean=True, excludes=["*resource_data"])
-        self.prob.model.list_outputs(units=True, print_mean=True, excludes=["*resource_data"])
+        if print_results:
+            # Use custom summary printer instead of OpenMDAO's built-in printing so we can
+            # suppress internal value printing and display only mean values.
+            self.print_results(self.prob.model, excludes=["*resource_data"])
+
+        if summarize_sql and self.recorder_path is not None:
+            convert_sql_to_csv_summary(self.recorder_path, save_to_file=True)
+
+        for model in self.performance_models:
+            if hasattr(model, "post_process") and callable(model.post_process):
+                model.post_process(show_plots=show_plots)
+                if show_plots:
+                    plt.show()
+
+    @staticmethod
+    def print_results(model, includes=None, excludes=None, show_units=True):
+        """Print hierarchical inputs plus explicit/implicit outputs (means only) using Rich.
+
+        Order of rows preserves OpenMDAO's original ordering from list_inputs/list_outputs.
+        Group rows are emitted lazily the first time a variable within that path appears.
+        """
+
+        def _gather_outputs(explicit=True, implicit=False):
+            return model.list_outputs(
+                explicit=explicit,
+                implicit=implicit,
+                val=True,
+                prom_name=True,
+                units=show_units,
+                shape=True,
+                includes=includes,
+                excludes=excludes,
+                out_stream=None,
+                return_format="list",
+            )
+
+        explicit_meta = _gather_outputs(explicit=True, implicit=False)
+        implicit_meta = _gather_outputs(explicit=False, implicit=True)
+
+        # Gather inputs (no explicit/implicit split in OpenMDAO API)
+        input_meta = model.list_inputs(
+            val=True,
+            prom_name=True,
+            units=show_units,
+            shape=True,
+            includes=includes,
+            excludes=excludes,
+            out_stream=None,
+            return_format="list",
+        )
+
+        def _mean(val):
+            if isinstance(val, np.ndarray):
+                return "nan" if val.size == 0 else f"{np.mean(val)}"
+            if isinstance(val, int | float | np.number):
+                return f"{val}"
+            return "n/a"
+
+        from rich import box
+        from rich.table import Table
+        from rich.console import Console
+
+        console = Console()
+
+        def _emit_section(title, meta_list, kind_label="outputs"):
+            if not meta_list:
+                return
+            console.print(f"\n{len(meta_list)} {title.lower()} {kind_label}:")
+            table = Table(show_header=True, header_style="bold", box=box.MINIMAL, pad_edge=False)
+            table.add_column("Variable", overflow="fold")
+            table.add_column("Mean", justify="right")
+            if show_units:
+                table.add_column("Units")
+            table.add_column("Shape")
+            table.add_column("Promoted name", overflow="fold")
+
+            emitted_groups = set()
+            for abs_name, meta in meta_list:
+                parts = abs_name.split(".")
+                # emit group rows
+                for depth in range(len(parts) - 1):
+                    grp_path = ".".join(parts[: depth + 1])
+                    if grp_path not in emitted_groups:
+                        emitted_groups.add(grp_path)
+                        indent = "  " * depth
+                        grp_name = parts[depth]
+                        if show_units:
+                            table.add_row(f"{indent}{grp_name}", "", "", "", "")
+                        else:
+                            table.add_row(f"{indent}{grp_name}", "", "", "")
+                var = parts[-1]
+                indent = "  " * (len(parts) - 1)
+                mean_raw = _mean(meta.get("val"))
+                try:
+                    val = float(mean_raw)
+                    units_val_raw = meta.get("units")
+                    # Format as integer if units are 'year' or variable name is 'cost_year'
+                    if units_val_raw == "year" or var == "cost_year":
+                        mean_val = str(int(val))
+                    elif abs(val) >= 1e5:
+                        formatted = f"{val:,.2f}"
+                        mean_val = formatted.rstrip("0")
+                        if mean_val.endswith("."):
+                            mean_val = mean_val  # Keep e.g. "520." format
+                        else:
+                            mean_val = mean_val + "." if "." not in mean_val else mean_val
+                    else:
+                        formatted = f"{val:,.4f}"
+                        mean_val = formatted.rstrip("0")
+                        # Ensure we end with "." if all decimals were zeros
+                        if mean_val.endswith("."):
+                            pass  # Keep as e.g. "520." or "0."
+                        elif "." not in mean_val:
+                            mean_val = mean_val + "."
+                except (ValueError, TypeError):
+                    mean_val = str(mean_raw)
+                units_val = (
+                    "n/a"
+                    if (var == "cost_year" or meta.get("units") is None)
+                    else str(meta.get("units"))
+                    if show_units
+                    else ""
+                )
+                shape_meta = meta.get("shape", "")
+                if var == "cost_year":
+                    shape_str = "n/a"
+                elif isinstance(shape_meta, tuple | list) and len(shape_meta) > 0:
+                    shape_str = str(shape_meta[0])
+                else:
+                    shape_str = "" if shape_meta in (None, "", ()) else str(shape_meta)
+                promoted = meta.get("prom_name", "")
+                if show_units:
+                    table.add_row(f"{indent}{var}", mean_val, units_val, shape_str, promoted)
+                else:
+                    table.add_row(f"{indent}{var}", mean_val, shape_str, promoted)
+            console.print(table)
+
+        # Emit sections (inside function scope)
+        _emit_section("Explicit", input_meta, kind_label="inputs")
+        _emit_section("Explicit", explicit_meta, kind_label="outputs")
+        _emit_section("Implicit", implicit_meta, kind_label="outputs")
+
+        # structured return
+        def _structured(meta_list):
+            return {
+                name: {
+                    "mean": _mean(meta.get("val")),
+                    **(
+                        {
+                            "units": (
+                                "n/a"
+                                if name.split(".")[-1] == "cost_year" or meta.get("units") is None
+                                else meta.get("units")
+                            )
+                        }
+                        if show_units
+                        else {}
+                    ),
+                    "shape": (
+                        "n/a"
+                        if name.split(".")[-1] == "cost_year"
+                        else meta.get("shape")[0]
+                        if isinstance(meta.get("shape"), tuple | list)
+                        and len(meta.get("shape")) > 0
+                        else ""
+                        if meta.get("shape") in (None, "", ())
+                        else meta.get("shape")
+                    ),
+                    "promoted_name": meta.get("prom_name"),
+                }
+                for name, meta in meta_list
+            }
+
+        return {
+            "inputs": _structured(input_meta),
+            "explicit_outputs": _structured(explicit_meta),
+            "implicit_outputs": _structured(implicit_meta),
+        }

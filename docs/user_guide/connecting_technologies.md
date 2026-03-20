@@ -31,7 +31,11 @@ There are two connection formats:
 - **source_tech**: Name of the technology providing the output
 - **destination_tech**: Name of the technology receiving the input
 - **variable_name**: The type of variable being transported (e.g., "electricity", "hydrogen", "ammonia")
-- **transport_type**: The transport component to use (e.g., "cable", "pipeline")
+- **transport_type**: The transport component to use (e.g., "cable", "pipe")
+
+```{note}
+"cable" and "pipe" are transport components that are internal to H2I and do not need to be defined in the technology configuration file. The "cable" can only transport electricity, and the "pipe" can transport a handful of commodities that are commonly used in H2I models (such as hydrogen, co2, methanol, ammonia, water, etc). To transport a commodity that is *not* supported with by "cable" or "pipe" transporters, the `GenericTransporterPerformanceModel` can be used instead. Example usage of the generic transporter is available in Example 21.
+```
 
 #### 3-element connections (direct connections)
 ##### Same shared parameter name
@@ -88,9 +92,9 @@ And automatically connects:
 - `electricity_splitter.electricity_out1` → `electricity_splitter_to_electrolyzer_cable.electricity_in`
 - `electricity_splitter.electricity_out2` → `electricity_splitter_to_doc_cable.electricity_in`
 
-## Power combiner
+## Generic combiner
 
-The power combiner is a simple but essential component that takes electricity from two sources and combines them into a single output without losses.
+The generic combiner is a simple but essential component that takes a single commodity from multiple sources and combines the sources into a single output without losses. The following example uses power (kW) as the commodity, but streams of any single commodity can be combined. Any number of sources may be combined, not just two as in the example.
 
 ### Configuration
 
@@ -98,30 +102,52 @@ Add the combiner to your `tech_config.yaml`:
 
 ```yaml
 technologies:
-  electricity_combiner:
+  combiner:
     performance_model:
-      model: "combiner_performance"
+      model: "GenericCombinerPerformanceModel"
+    model_inputs:
+      performance_parameters:
+        commodity: "electricity"
+        commodity_units: "kW"
 ```
 
-No additional configuration parameters are needed - the combiner simply adds the two input streams.
+No additional configuration parameters are needed in the `tech_config.yaml` - the combiner simply adds the input streams.
 
 ### Inputs and outputs
 
-- **Inputs**:
-  - `electricity_in1`: Power from the first source (kW)
-  - `electricity_in2`: Power from the second source (kW)
-- **Output**:
-  - `electricity_out`: Combined power output (kW)
+For each input stream *i* (numbered 1, 2, …, `in_streams`):
 
-The relationship is straightforward: `electricity_out = electricity_in1 + electricity_in2`
+- **Inputs** (per stream):
+  - `<commodity>_in<i>`: Time-series commodity profile from source *i* (commodity units)
+  - `rated_<commodity>_production<i>`: Rated (nameplate) production of source *i* (commodity units, scalar)
+  - `<commodity>_capacity_factor<i>`: Annual capacity factor of source *i* (unitless, shape = plant life)
+
+- **Outputs**:
+  - `<commodity>_out`: Combined commodity time-series profile — element-wise sum of all inputs
+  - `rated_<commodity>_production`: Total rated production — sum of all input rated productions
+  - `<commodity>_capacity_factor`: Combined capacity factor (unitless, shape = plant life)
+
+### Commodity output
+
+The combined output profile is the element-wise sum of all input profiles:
+
+`<commodity>_out = <commodity>_in1 + <commodity>_in2 + …`
+
+### Capacity factor calculation
+
+The combined capacity factor is a **weighted average** of the input capacity factors, weighted by each stream's rated production:
+
+`CF_out = (CF1 × S1 + CF2 × S2 + …) / (S1 + S2 + …)`
+
+where `CF_i` is the capacity factor and `S_i` is the rated commodity production of input stream *i*. This weighting ensures that larger sources contribute proportionally more to the combined capacity factor. If the total rated production is zero, the output capacity factor is set to zero.
 
 ### Usage example
 
 ```yaml
 technology_interconnections: [
-  ["wind_farm", "electricity_combiner", "electricity", "cable"],
-  ["solar_farm", "electricity_combiner", "electricity", "cable"],
-  ["electricity_combiner", "electrolyzer", "electricity", "cable"],
+  ["wind_farm", "combiner", "electricity", "cable"],
+  ["solar_farm", "combiner", "electricity", "cable"],
+  ["combiner", "electrolyzer", "electricity", "cable"],
 ]
 ```
 
@@ -139,8 +165,10 @@ Add the splitter to your `tech_config.yaml`:
 technologies:
   electricity_splitter:
     performance_model:
-      model: "splitter_performance"
+      model: "GenericSplitterPerformanceModel"
       config:
+        commodity: "electricity"
+        commodity_units: "kW"
         split_mode: "fraction"  # or "prescribed_electricity"
         fraction_to_priority_tech: 0.7  # for fraction mode
         # OR
@@ -206,5 +234,5 @@ technology_interconnections: [
 This sends part of the offshore wind power to a direct ocean capture system and the remainder to an electrolyzer.
 
 ```{note}
-Each combiner handles exactly two inputs, and each splitter handles exactly two outputs. For more complex architectures, you can chain multiple components together.
+Each splitter handles exactly two inputs. For more complex architectures, you can chain multiple components together.
 ```

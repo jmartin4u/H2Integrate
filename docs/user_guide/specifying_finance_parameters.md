@@ -6,7 +6,7 @@ The `finance_parameters` section of the `plant_config` defines the financial sub
 The `plant_life` parameter from the `plant` section of the `plant_config` is also used in finance calculations as the operating life of the plant.
 ```
 
-At minimum, `finance_parameters` must include:
+If a user is computing finances, then at a minimum, `finance_parameters` must include:
 - `cost_adjustment_parameters`:
   - `target_dollar_year`: dollar-year to convert costs to.
   - `cost_year_adjustment_inflation`: used to adjust costs for each technology from its native cost year to the `target_dollar_year` (see [details on cost years and cost models here](cost:cost_years))
@@ -21,7 +21,7 @@ Within this framework, there are two distinct layers, **finance groups** and **f
 #### Finance groups
   A finance group contains the attributes needed to run one finance model:
   - `finance_model`:
-    The name of the financial model to use (e.g., `ProFastComp`). Must correspond to one of the available models in `self.supported_models`.
+    The name of the financial model to use (e.g., `ProFastLCO`). Must correspond to one of the available models in `self.supported_models`.
   - `model_inputs`:
     A dictionary of parameters passed into the chosen finance model. These provide customization of assumptions such as discount rate, debt fraction, or cost escalation.
   - `commodity` (conditionally required):
@@ -43,6 +43,8 @@ Within this framework, there are two distinct layers, **finance groups** and **f
     List of `finance_groups` that contain the `finance_model` and `model_inputs`. Required if multiple `finance_groups` are being used. Technology-specific `finance_groups` can be called by using the technology name listed in the `tech_config` (e.g., `steel` to use the steel specific finance model).
   - `commodity_desc` (optional):
     A text label to further distinguish outputs for a commodity. This is particularly useful when multiple finance models or subgroups reference the same commodity but need to produce separate outputs.
+  - `commodity_stream` (optional):
+    A text label of a technology that outputs the specified ``commodity`` to use as the commodity production stream in finance calculations. This is particularly useful when wanting to choose a specific commodity stream to use in finance calculations (such as the outputs of combiners or splitters)
 
 ```{important}
 If no subgroups are defined, a **default subgroup** is created that contains *all technologies* and references the default finance model and commodity defined in `finance_groups`.
@@ -63,7 +65,7 @@ General format:
 finance_parameters:
   finance_groups:
     commodity: "hydrogen"
-    finance_model: "ProFastComp"
+    finance_model: "ProFastLCO"
     model_inputs:
       discount_rate: 0.08
 ```
@@ -87,8 +89,8 @@ General format:
 ```yaml
 finance_parameters:
   finance_groups:
-    finance_model: "ProFastComp"
-    model_inputs: #dictionary of inputs for ProFastComp
+    finance_model: "ProFastLCO"
+    model_inputs: #dictionary of inputs for ProFastLCO
   finance_subgroups:
     subgroup_a:
       commodity: "hydrogen" #required
@@ -123,7 +125,7 @@ General format:
 finance_parameters:
   finance_groups:
     group_a:
-      finance_model: "ProFastComp"
+      finance_model: "ProFastLCO"
       model_inputs: {discount_rate: 0.08}
     group_b:
       finance_model: "NPVFinancial"

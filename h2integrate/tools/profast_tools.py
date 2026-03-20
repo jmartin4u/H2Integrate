@@ -115,21 +115,28 @@ def make_price_breakdown(price_breakdown, pf_config):
     price_breakdown_feedstocks = {}
     price_breakdown_capex = {}
     price_breakdown_fixed_cost = {}
+    price_breakdown_coproducts = {}
     full_price_breakdown = {}
+
     lco_str = "LCO{}".format(pf_config["params"]["commodity"]["name"][0].upper())
     lco_units = "$/{}".format(pf_config["params"]["commodity"]["unit"])
     config_keys = list(pf_config.keys())
+
+    operating_expenses = price_breakdown[price_breakdown["Type"] == "Operating expenses"]
+    cash_outflow_prices = price_breakdown[price_breakdown["Type"] == "Financing cash outflow"]
+    operating_revenue = price_breakdown[price_breakdown["Type"] == "Operating revenue"]
+
     if "capital_items" in config_keys:
         capital_items = pf_config["capital_items"]
         total_price_capex = 0
         capex_fraction = {}
         for item in capital_items:
-            total_price_capex += price_breakdown.loc[
-                price_breakdown["Name"] == item, "NPV"
+            total_price_capex += cash_outflow_prices.loc[
+                cash_outflow_prices["Name"] == item, "NPV"
             ].tolist()[0]
         for item in capital_items:
             capex_fraction[item] = (
-                price_breakdown.loc[price_breakdown["Name"] == item, "NPV"].tolist()[0]
+                cash_outflow_prices.loc[cash_outflow_prices["Name"] == item, "NPV"].tolist()[0]
                 / total_price_capex
             )
     cap_expense = (
@@ -153,32 +160,84 @@ def make_price_breakdown(price_breakdown, pf_config):
     )
 
     if "capital_items" in config_keys:
+        # capital_items are of type "Financing cash outflow"
         capital_items = pf_config["capital_items"]
         for item in capital_items:
-            key_name = f"{lco_str}: {item} ({lco_units})"
+            key_name = f"{lco_str}: {item} CapEx ({lco_units})"
+
+            # Add the CapEx cost in lco_units to the capex breakdown
             price_breakdown_capex[key_name] = (
-                price_breakdown.loc[price_breakdown["Name"] == item, "NPV"].tolist()[0]
+                cash_outflow_prices.loc[cash_outflow_prices["Name"] == item, "NPV"].tolist()[0]
                 + cap_expense * capex_fraction[item]
             )
+
+            # Remove the capital item from the cash outflow prices
+            i_drop = cash_outflow_prices.loc[
+                cash_outflow_prices["Name"] == item, "NPV"
+            ].index.tolist()[0]
+            cash_outflow_prices = cash_outflow_prices.drop(labels=i_drop, axis=0)
+
+        # add the capex breakdown to the full price breakdown
         full_price_breakdown.update(price_breakdown_capex)
 
     if "fixed_costs" in config_keys:
+        # fixed_costs are of type "Operating expenses"
         fixed_items = pf_config["fixed_costs"]
         for item in fixed_items:
-            key_name = f"{lco_str}: {item} ({lco_units})"
-            price_breakdown_fixed_cost[key_name] = price_breakdown.loc[
-                price_breakdown["Name"] == item, "NPV"
+            key_name = f"{lco_str}: {item} OpEx ({lco_units})"
+
+            # Add the fixed cost in lco_units to the fixed cost breakdown
+            price_breakdown_fixed_cost[key_name] = operating_expenses.loc[
+                operating_expenses["Name"] == item, "NPV"
             ].tolist()[0]
+
+            # Remove the fixed cost from the cash outflow prices
+            i_drop = operating_expenses.loc[
+                operating_expenses["Name"] == item, "NPV"
+            ].index.tolist()[0]
+            operating_expenses = operating_expenses.drop(labels=i_drop, axis=0)
+
+        # add the fixed cost breakdown to the full price breakdown
         full_price_breakdown.update(price_breakdown_fixed_cost)
 
     if "feedstocks" in config_keys:
+        # feedstocks are of type "Operating expenses"
         feedstock_items = pf_config["feedstocks"]
         for item in feedstock_items:
-            key_name = f"{lco_str}: {item} ({lco_units})"
-            price_breakdown_feedstocks[key_name] = price_breakdown.loc[
-                price_breakdown["Name"] == item, "NPV"
+            key_name = f"{lco_str}: {item} Feedstock ({lco_units})"
+
+            # Add the feedstock cost in lco_units to the feedstock breakdown
+            price_breakdown_feedstocks[key_name] = operating_expenses.loc[
+                operating_expenses["Name"] == item, "NPV"
             ].tolist()[0]
+
+            # Remove the feedstock cost from the cash outflow prices
+            i_drop = operating_expenses.loc[
+                operating_expenses["Name"] == item, "NPV"
+            ].index.tolist()[0]
+            operating_expenses = operating_expenses.drop(labels=i_drop, axis=0)
+
+        # add the feedstock cost breakdown to the full price breakdown
         full_price_breakdown.update(price_breakdown_feedstocks)
+
+    if "coproducts" in config_keys:
+        # coproducts are of type "Operating revenue"
+        coproduct_items = pf_config["coproducts"]
+        for item in coproduct_items:
+            key_name = f"{lco_str}: {item} Coproduct ({lco_units})"
+            coproduct_price = operating_revenue.loc[
+                operating_revenue["Name"] == item, "NPV"
+            ].tolist()[0]
+
+            # Add the coproduct cost in lco_units to the coproduct breakdown
+            if coproduct_price > 0:
+                # multiple by -1 since coproducts are revenue
+                price_breakdown_coproducts[key_name] = -1 * coproduct_price
+            else:
+                price_breakdown_coproducts[key_name] = coproduct_price
+
+        # add the coproduct cost breakdown to the full price breakdown
+        full_price_breakdown.update(price_breakdown_coproducts)
 
     price_breakdown_taxes = (
         price_breakdown.loc[price_breakdown["Name"] == "Income taxes payable", "NPV"].tolist()[0]
@@ -229,14 +288,9 @@ def format_profast_price_breakdown_per_year(price_breakdown):
     Args:
         price_breakdown (pd.DataFrame): A DataFrame containing "Type", "Name", "Amount", and "NPV"
             - "Amount" should be an array-like object per row, representing values for each year.
+
     Returns:
-        pd.DataFrame: A formatted DataFrame with columns:
-            - "Type"
-            - "Name"
-            - "Year {i} Amount" for each year (e.g., "Year 0 Amount", "Year 1 Amount", ...)
-            - "NPV"
-        Each row corresponds to an entry in the input DataFrame,
-        with yearly amounts expanded into separate columns.
+        pd.DataFrame: Formatted DataFrame with yearly amounts expanded into separate columns.
     """
     n_years = len(price_breakdown.iloc[0]["Amount"])
     year_cols = [f"Year {i} Amount" for i in range(n_years)]
@@ -246,3 +300,153 @@ def format_profast_price_breakdown_per_year(price_breakdown):
         [price_breakdown[["Type", "Name"]], amount_df, price_breakdown["NPV"]], axis=1
     )
     return formatted_df
+
+
+def convert_pf_res_to_pf_config(pf_config):
+    """Convert dictionary of ProFAST objects to dictionary with
+        embedded dictionaries.
+
+    Args:
+        pf_config (dict): values are profast objects.
+
+    Returns:
+        dict: dictionary representation of ProFAST inputs.
+    """
+    pf_config_new = {}
+    config_keys = list(pf_config.keys())
+    pf_config_new.update({"params": {}})
+
+    new_params = {}
+    params = pf_config["params"]
+    for i in params:
+        if i != "fraction of year operated":
+            new_params.update({i: params[i]})
+    pf_config_new.update({"params": new_params})
+
+    if "feedstocks" in config_keys:
+        feedstocks = {}
+        feedstock_keys = ["name", "usage", "unit", "cost", "escalation"]
+        variables = pf_config["feedstocks"]
+        for i in variables:
+            vals = [
+                i,
+                variables[i].usage,
+                variables[i].unit,
+                variables[i].cost,
+                variables[i].escalation,
+            ]
+            feedstocks.update({i: dict(zip(feedstock_keys, vals))})
+        pf_config_new.update({"feedstocks": feedstocks})
+
+    if "capital_items" in config_keys:
+        variables = pf_config["capital_items"]
+        capital_items = {}
+        citem_keys = ["name", "cost", "depr_type", "depr_period", "refurb"]
+        for i in variables:
+            vals = [
+                i,
+                variables[i].cost,
+                variables[i].depr_type,
+                variables[i].depr_period,
+                variables[i].refurb,
+            ]
+            capital_items.update({i: dict(zip(citem_keys, vals))})
+        pf_config_new.update({"capital_items": capital_items})
+
+    if "fixed_costs" in config_keys:
+        variables = pf_config["fixed_costs"]
+        fixed_costs = {}
+        fitem_keys = ["name", "usage", "unit", "cost", "escalation"]
+        for i in variables:
+            vals = [
+                i,
+                variables[i].usage,
+                variables[i].unit,
+                variables[i].cost,
+                variables[i].escalation,
+            ]
+            fixed_costs.update({i: dict(zip(fitem_keys, vals))})
+        pf_config_new.update({"fixed_costs": fixed_costs})
+
+    if "incentives" in config_keys:
+        variables = pf_config["incentives"]
+        incentive_keys = ["name", "value", "decay", "sunset_years", "tax_credit"]
+        incentives = {}
+        for i in variables:
+            if isinstance(variables[i].value, dict):
+                new_value = {int(y): v for y, v in variables[i].value.items()}
+                vals = [
+                    i,
+                    new_value,
+                    variables[i].decay,
+                    variables[i].sunset_years,
+                    variables[i].tax_credit,
+                ]
+            else:
+                vals = [
+                    i,
+                    variables[i].value,
+                    variables[i].decay,
+                    variables[i].sunset_years,
+                    variables[i].tax_credit,
+                ]
+            incentives.update({i: dict(zip(incentive_keys, vals))})
+        pf_config_new.update({"incentives": incentives})
+
+    if "coproducts" in config_keys:
+        variables = pf_config["coproducts"]
+        coproduct_keys = ["name", "usage", "unit", "cost", "escalation"]
+        coproducts = {}
+        for i in variables:
+            if isinstance(variables[i].usage, dict):
+                new_usage = {int(y): v for y, v in variables[i].usage.items()}
+                vals = [i, new_usage, variables[i].unit, variables[i].cost, variables[i].escalation]
+            else:
+                vals = [
+                    i,
+                    variables[i].usage,
+                    variables[i].unit,
+                    variables[i].cost,
+                    variables[i].escalation,
+                ]
+            coproducts.update({i: dict(zip(coproduct_keys, vals))})
+        pf_config_new.update({"coproducts": coproducts})
+    return pf_config_new
+
+
+def make_pf_config_from_profast(pf):
+    """Convert ProFAST object to a dictionary of objects.
+
+    Args:
+        pf (ProFAST.ProFAST): ProFAST object.
+
+    Returns:
+        dict: keys are profast top-level inputs such as 'params', 'capital_items',
+            'fixed_costs', etc. Values are objects of each input type.
+    """
+    pf_config = {
+        "params": pf.vals,
+        "capital_items": pf.capital_items,
+        "fixed_costs": pf.fixed_costs,
+        "feedstocks": pf.feedstocks,
+        "incentives": pf.incentives,
+        "coproducts": pf.coproducts,
+    }
+    if getattr(pf, "LCO", None) is not None:
+        pf_config["LCO"] = pf.LCO
+
+    return pf_config
+
+
+def convert_pf_to_dict(pf):
+    """Convert dictionary of ProFAST objects to dictionary with embedded dictionaries.
+
+    Args:
+        pf_config (ProFAST object): values are ProFAST objects.
+
+    Returns:
+        dict: dictionary representation of ProFAST inputs.
+    """
+    pf_config = make_pf_config_from_profast(pf)
+    pf_dict = convert_pf_res_to_pf_config(pf_config)
+    return pf_dict

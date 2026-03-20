@@ -13,7 +13,7 @@ from h2integrate.converters.methanol.methanol_baseclass import (
 )
 
 
-@define
+@define(kw_only=True)
 class SMRPerformanceConfig(MethanolPerformanceConfig):
     meoh_syn_cat_consume_ratio: float = field()
     meoh_atr_cat_consume_ratio: float = field()
@@ -45,7 +45,8 @@ class SMRMethanolPlantPerformanceModel(MethanolPerformanceBaseClass):
     def setup(self):
         n_timesteps = self.options["plant_config"]["plant"]["simulation"]["n_timesteps"]
         self.config = SMRPerformanceConfig.from_dict(
-            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "performance")
+            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "performance"),
+            additional_cls_name=self.__class__.__name__,
         )
         super().setup()
 
@@ -102,10 +103,19 @@ class SMRMethanolPlantPerformanceModel(MethanolPerformanceBaseClass):
         outputs["meoh_atr_cat_consume"] = np.sum(meoh_prod) * atr_ratio
         outputs["ng_consume"] = meoh_prod * ng_ratio
         outputs["methanol_out"] = meoh_prod
+        outputs["total_methanol_produced"] = np.sum(meoh_prod)
         outputs["electricity_out"] = meoh_prod * elec_ratio
 
+        outputs["rated_methanol_production"] = inputs["plant_capacity_kgpy"] / 8760
+        outputs["total_methanol_produced"] = outputs["methanol_out"].sum()
+        max_production = len(meoh_prod) * inputs["plant_capacity_kgpy"] / 8760
+        outputs["capacity_factor"] = outputs["total_methanol_produced"] / max_production
+        outputs["annual_methanol_produced"] = outputs["total_methanol_produced"] * (
+            1 / self.fraction_of_year_simulated
+        )
 
-@define
+
+@define(kw_only=True)
 class SMRCostConfig(MethanolCostConfig):
     ng_lhv: float = field()
     meoh_syn_cat_price: float = field()
@@ -137,7 +147,8 @@ class SMRMethanolPlantCostModel(MethanolCostBaseClass):
 
     def setup(self):
         self.config = SMRCostConfig.from_dict(
-            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "cost")
+            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "cost"),
+            additional_cls_name=self.__class__.__name__,
         )
         super().setup()
         n_timesteps = self.options["plant_config"]["plant"]["simulation"]["n_timesteps"]
@@ -168,14 +179,19 @@ class SMRMethanolPlantCostModel(MethanolCostBaseClass):
         lhv_mj = inputs["ng_lhv"]
         lhv_mmbtu = convert_units(lhv_mj, "MJ", "MBtu")
 
-        outputs["CapEx"] = toc_usd
-        outputs["OpEx"] = foc_usd_y + voc_usd_y
         outputs["Fixed_OpEx"] = foc_usd_y
         outputs["Variable_OpEx"] = voc_usd_y
-        outputs["meoh_syn_cat_cost"] = inputs["meoh_syn_cat_consume"] * inputs["meoh_syn_cat_price"]
-        outputs["meoh_atr_cat_cost"] = inputs["meoh_atr_cat_consume"] * inputs["meoh_atr_cat_price"]
-        outputs["ng_cost"] = np.sum(inputs["ng_consume"]) * lhv_mmbtu * inputs["ng_price"]
-        outputs["elec_revenue"] = np.sum(inputs["electricity_out"]) * ppa_price
+        meoh_cat = inputs["meoh_syn_cat_consume"] * inputs["meoh_syn_cat_price"]
+        outputs["meoh_syn_cat_cost"] = meoh_cat
+        atr_cat = inputs["meoh_atr_cat_consume"] * inputs["meoh_atr_cat_price"]
+        outputs["meoh_atr_cat_cost"] = atr_cat
+        ng_cost = np.sum(inputs["ng_consume"]) * lhv_mmbtu * inputs["ng_price"]
+        outputs["ng_cost"] = ng_cost
+        elec_rev = np.sum(inputs["electricity_out"]) * ppa_price
+        outputs["elec_revenue"] = elec_rev
+
+        outputs["CapEx"] = toc_usd
+        outputs["OpEx"] = foc_usd_y + voc_usd_y + meoh_cat + atr_cat + ng_cost - elec_rev
 
 
 class SMRMethanolPlantFinanceModel(MethanolFinanceBaseClass):
@@ -197,7 +213,8 @@ class SMRMethanolPlantFinanceModel(MethanolFinanceBaseClass):
 
     def setup(self):
         self.config = MethanolFinanceConfig.from_dict(
-            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "finance")
+            merge_shared_inputs(self.options["tech_config"]["model_inputs"], "finance"),
+            additional_cls_name=self.__class__.__name__,
         )
         super().setup()
 
