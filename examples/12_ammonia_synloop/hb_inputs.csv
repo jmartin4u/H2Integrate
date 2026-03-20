@@ -3,4 +3,4 @@ technologies,ammonia,model_inputs,shared_parameters,production_capacity,,float,1
 technologies,electrolyzer,model_inputs,performance_parameters,n_clusters,,int,16,2
 technologies,electrolyzer,model_inputs,performance_parameters,include_degradation_penalty,,bool,TRUE,FALSE
 technologies,electrolyzer,model_inputs,financial_parameters,capital_items,replacement_cost_percent,float,0.15,0.25
-technologies,electricity_splitter,model_inputs,performance_parameters,prescribed_commodity_to_priority_tech,,,53.0645243,5.30645243
+technologies,electricity_splitter,model_inputs,performance_parameters,prescribed_commodity_to_priority_tech,,float,53.0645243,5.30645243
