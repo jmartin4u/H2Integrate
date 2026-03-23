@@ -307,14 +307,14 @@ class StoragePerformanceModel(PerformanceModelBaseClass):
                 if any(intended_dispatch_tech in name for name in self.tech_group_name):
                     self.add_discrete_input("pyomo_dispatch_solver", val=dummy_function)
                     break
-        else:
-            # using an open-loop storage controller
-            self.add_input(
-                f"{self.commodity}_set_point",
-                val=0.0,
-                shape=self.n_timesteps,
-                units=self.commodity_rate_units,
-            )
+        # else:
+        # using an open-loop storage controller
+        self.add_input(
+            f"{self.commodity}_set_point",
+            val=0.0,
+            shape=self.n_timesteps,
+            units=self.commodity_rate_units,
+        )
 
     def compute(self, inputs, outputs, discrete_inputs=[], discrete_outputs=[]):
         """Run the storage model.
