@@ -27,4 +27,6 @@ for casename in caselist:
     model.setup()
     model.prob.set_val("battery.electricity_demand", demand_profile, units="MW")
     model.run()
-    model.post_process()
+    # model.post_process()
+    lcoa = model.prob.get_val("finance_subgroup_nh3.LCOA")
+    print(f"LCOA: {lcoa}")

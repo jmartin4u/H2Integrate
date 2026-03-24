@@ -155,22 +155,15 @@ technologies:
         price: 0.0
         annual_cost: 0.
         start_up_cost: 0.0
-  electricity_feedstock:
+  electricity_splitter:
     performance_model:
-      model: FeedstockPerformanceModel
-    cost_model:
-      model: FeedstockCostModel
+      model: GenericSplitterPerformanceModel
     model_inputs:
-      shared_parameters:
+      performance_parameters:
+        split_mode: prescribed_commodity
         commodity: electricity
         commodity_rate_units: MW
-      performance_parameters:
-        rated_capacity: 29.0  # MW of electricity
-      cost_parameters:
-        cost_year: 2022
-        price: 0.0
-        annual_cost: 0.
-        start_up_cost: 0.0
+        prescribed_commodity_to_priority_tech: 28.1  # Calculated from ammonia production_capacity and energy_demand
   ammonia:
     performance_model:
       model: AmmoniaSynLoopPerformanceModel
