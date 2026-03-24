@@ -98,6 +98,8 @@ class GenericSplitterPerformanceModel(om.ExplicitComponent):
                 units=self.config.commodity_rate_units,
                 desc="Prescribed amount of commodity to send to the priority technology",
             )
+            prescribe = self.config.prescribed_commodity_to_priority_tech
+            print(f"prescribed_commodity_to_priority_tech in setup(): {prescribe}")
 
         self.add_output(
             f"{self.config.commodity}_out1",
@@ -127,6 +129,8 @@ class GenericSplitterPerformanceModel(om.ExplicitComponent):
 
         elif split_mode == "prescribed_commodity":
             prescribed_to_priority = inputs["prescribed_commodity_to_priority_tech"]
+            prescribe = np.mean(prescribed_to_priority)
+            print(f"prescribed_commodity_to_priority_tech in compute(): {prescribe}")
             # Ensure prescribed commodity is non-negative and doesn't exceed available commodity
             available_commodity = np.maximum(0.0, commodity_in)
             requested_amount = np.maximum(0.0, prescribed_to_priority)
