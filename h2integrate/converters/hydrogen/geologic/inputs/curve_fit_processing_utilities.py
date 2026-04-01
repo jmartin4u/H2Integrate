@@ -40,6 +40,8 @@ class CurveCoefficients:
     a3: float
     a4: float
     a5: float
+    a6: float
+    a7: float
     scale_x: float
     scale_y: float
     scale_z: float
@@ -53,6 +55,8 @@ class CurveCoefficients:
             "a3": self.a3,
             "a4": self.a4,
             "a5": self.a5,
+            "a6": self.a6,
+            "a7": self.a7,
             "scale_x": self.scale_x,
             "scale_y": self.scale_y,
             "scale_z": self.scale_z,
@@ -80,7 +84,14 @@ def scale_variables(input_vars: list[np.ndarray] | np.ndarray) -> tuple[np.ndarr
 
 
 def exponential_power_function(
-    xy: tuple[np.ndarray, np.ndarray], a1: float, a2: float, a3: float, a4: float, a5: float
+    xy: tuple[np.ndarray, np.ndarray],
+    a1: float,
+    a2: float,
+    a3: float,
+    a4: float,
+    a5: float,
+    a6: float,
+    a7: float,
 ) -> np.ndarray:
     """
     Two-variable curve fitting function combining exponential and power terms.
@@ -95,11 +106,21 @@ def exponential_power_function(
         Fitted output values.
     """
     x, y = xy
-    return a1 * np.exp(x * a2) + a3 * y**a4 + a5
+    # x = np.log(x)
+    y = np.log(y)
+    # return a1 * np.exp(x * a2) + y*a3 * y**a4 + a5
+    return a1 + a2 * x + a3 * y + a4 * x**2 + a5 * x * y + a6 * y**2
 
 
 def double_power_function(
-    xy: tuple[np.ndarray, np.ndarray], a1: float, a2: float, a3: float, a4: float, a5: float
+    xy: tuple[np.ndarray, np.ndarray],
+    a1: float,
+    a2: float,
+    a3: float,
+    a4: float,
+    a5: float,
+    a6: float,
+    a7: float,
 ) -> np.ndarray:
     """
     Two-variable curve fitting function with two power terms (only uses x variable).
@@ -129,7 +150,7 @@ def evaluate_curve(xy: tuple[np.ndarray, np.ndarray], coeffs: CurveCoefficients)
     Returns:
         Scaled output values.
     """
-    curve_params = [coeffs.a1, coeffs.a2, coeffs.a3, coeffs.a4, coeffs.a5]
+    curve_params = [coeffs.a1, coeffs.a2, coeffs.a3, coeffs.a4, coeffs.a5, coeffs.a6, coeffs.a7]
 
     if coeffs.fit_type == CURVE_FIT_TYPE_DOUBLE_EXP:
         return double_power_function(xy, *curve_params)
@@ -182,15 +203,15 @@ def fit_single_curve(
     # Data points 0-4 are from Aspen modeling.
     # Data points 5-6 at H2 conc. = 100% and 0% are empirically correlated.
     if output_name == "H2 Flow Out [kg/hr]":
-        fit_type, n_points = CURVE_FIT_TYPE_DOUBLE_EXP, 6
+        fit_type, n_points = CURVE_FIT_TYPE_DOUBLE_EXP, 9
     elif output_name in ["H2 Conc Out [% mol]", "Labor [op/shift]"]:
-        fit_type, n_points = CURVE_FIT_TYPE_DOUBLE_EXP, 5
+        fit_type, n_points = CURVE_FIT_TYPE_DOUBLE_EXP, 9
     elif output_name == "Capex [USD]":
-        fit_type, n_points = CURVE_FIT_TYPE_EXP_POWER, 7
+        fit_type, n_points = CURVE_FIT_TYPE_EXP_POWER, 9
     elif output_name in ["Electricity [kW]", "Cooling Water [kt/h]"]:
-        fit_type, n_points = CURVE_FIT_TYPE_EXP_POWER, 6
+        fit_type, n_points = CURVE_FIT_TYPE_DOUBLE_EXP, 9
     else:  # Steam
-        fit_type, n_points = CURVE_FIT_TYPE_NONE, 5
+        fit_type, n_points = CURVE_FIT_TYPE_NONE, 9
 
     # Select appropriate fitting function
     if fit_type == CURVE_FIT_TYPE_DOUBLE_EXP:
@@ -211,6 +232,8 @@ def fit_single_curve(
         a3=opt_coeffs[2],
         a4=opt_coeffs[3],
         a5=opt_coeffs[4],
+        a6=opt_coeffs[5],
+        a7=opt_coeffs[6],
         scale_x=input_scale_factors[0],
         scale_y=input_scale_factors[1],
         scale_z=output_scale_factor,
@@ -243,8 +266,8 @@ def plot_curve_fit(
         Updated h2_out_surf if output_name is "H2 Flow Out [kg/hr]", else None.
     """
     # Create evaluation grid
-    x_grid_pts = np.arange(0.01, 1, 0.01)
-    y_grid_pts = np.exp(np.linspace(np.log(1000), np.log(100000), 100))
+    x_grid_pts = np.arange(0.7, 1, 0.01)
+    y_grid_pts = np.exp(np.linspace(np.log(2500), np.log(12500), 30))
     x_grid, y_grid = np.meshgrid(x_grid_pts, y_grid_pts)
 
     # Scale the grid
@@ -254,11 +277,25 @@ def plot_curve_fit(
     # Evaluate fitted surface
     if coeffs.fit_type == CURVE_FIT_TYPE_DOUBLE_EXP:
         z_surf_scaled = double_power_function(
-            (x_grid_scaled, y_grid_scaled), coeffs.a1, coeffs.a2, coeffs.a3, coeffs.a4, coeffs.a5
+            (x_grid_scaled, y_grid_scaled),
+            coeffs.a1,
+            coeffs.a2,
+            coeffs.a3,
+            coeffs.a4,
+            coeffs.a5,
+            coeffs.a6,
+            coeffs.a7,
         )
     else:
         z_surf_scaled = exponential_power_function(
-            (x_grid_scaled, y_grid_scaled), coeffs.a1, coeffs.a2, coeffs.a3, coeffs.a4, coeffs.a5
+            (x_grid_scaled, y_grid_scaled),
+            coeffs.a1,
+            coeffs.a2,
+            coeffs.a3,
+            coeffs.a4,
+            coeffs.a5,
+            coeffs.a6,
+            coeffs.a7,
         )
 
     z_surf = z_surf_scaled * coeffs.scale_z
@@ -280,7 +317,7 @@ def plot_curve_fit(
     cmap_min = np.min(cplot.levels)
     cmap_max = np.max(cplot.levels)
 
-    for i, point_value in enumerate(actual_output[:5]):
+    for i, point_value in enumerate(actual_output):
         if output_name not in ["H2 Flow Out [kg/hr]", "H2 Conc Out [% mol]"]:
             point_value *= flow[i] / h2_out[i]
 
@@ -297,15 +334,20 @@ def plot_curve_fit(
     # Format plot labels
     label = output_name
     if "H2 Conc Out" not in output_name and output_name != "H2 Flow Out [kg/hr]":
-        label = output_name[:-1] + "/(kg/hr H2 out)]"
+        label = output_name[:-1] + "/(kg/hr H2 capacity)]"
 
     plt.title(label)
     plt.xlabel("Wellhead Hydrogen Concentration [mol %]")
     plt.ylabel("Wellhead Flow Capacity [kg/hr]")
-    plt.semilogy()
+    # plt.semilogy()
+    ax = plt.gca()
+    fig = plt.gcf()
+    ax.set(xticklabels=np.arange(70, 105, 5))
 
     cbar = plt.colorbar()
     cbar.set_label(label, loc="center")
+    fig.set_size_inches(6, 3)
+    plt.tight_layout()
     plt.show()
 
     return new_h2_out_surf
@@ -362,7 +404,19 @@ def refit_coeffs(
     scaled_outputs, out_scale_factors = scale_variables(outputs)
 
     # Fit curves for each output
-    col_names = ["a1", "a2", "a3", "a4", "a5", "scale_x", "scale_y", "scale_z", "fit_type"]
+    col_names = [
+        "a1",
+        "a2",
+        "a3",
+        "a4",
+        "a5",
+        "a6",
+        "a7",
+        "scale_x",
+        "scale_y",
+        "scale_z",
+        "fit_type",
+    ]
 
     # Generate labels for the outputs
     name_to_label = {
@@ -481,6 +535,6 @@ if __name__ == "__main__":
         "Cooling Water [kt/h]",
         "Steam [kt/h]",
     ]
-    coeffs = refit_coeffs("aspen_results.csv", "aspen_perf_coeffs.csv", output_names, True)
+    # coeffs = refit_coeffs("aspen_results_2.csv", "aspen_perf_coeffs.csv", output_names, True)
     output_names = ["Capex [USD]", "Labor [op/shift]"]
-    coeffs = refit_coeffs("aspen_results.csv", "aspen_cost_coeffs.csv", output_names, True)
+    coeffs = refit_coeffs("aspen_results_2.csv", "aspen_cost_coeffs.csv", output_names, True)
