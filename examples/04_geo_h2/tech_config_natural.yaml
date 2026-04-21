@@ -25,6 +25,37 @@ technologies:
         use_arps_decline_curve: true
         decline_fit_params:
           fit_name: Eagle_Ford
+        bottomhole_multiphase:
+          pressure:
+            val: 500
+            units: psi
+          temperature:
+            val: 100
+            units: F
+          brine_rate:
+            val: 450
+            units: kg/d  # Need to convert from bpd
+          salinity:
+            val: 8.0
+            units: percent
+          ratio_rsw:
+            val: 299.2
+            units: ft**3/kg  # Need to convert from scf/bpd
+          gas_h2_mol_pct:
+            val: 75
+            units: percent
+          gas_ch4_mol_pct:
+            val: 9
+            units: percent
+          gas_n2_mol_pct:
+            val: 12
+            units: percent
+          gas_h2o_mol_pct:
+            val: 2
+            units: percent
+          gas_co2_mol_pct:
+            val: 2
+            units: percent
       cost_parameters:
         use_cost_curve: true
         test_drill_cost: 500000

@@ -49,7 +49,8 @@ def add_multivariable_output(component, stream_name: str, n_timesteps: int) -> N
     Raises:
         KeyError: If *stream_name* is not in :data:`multivariable_streams`.
     """
-    for var_name, var_props in multivariable_streams[stream_name].items():
+    stream_dict = getattr(component.config, stream_name)
+    for var_name, var_props in stream_dict.items():
         component.add_output(
             f"{stream_name}:{var_name}_out",
             val=0.0,
@@ -73,7 +74,8 @@ def add_multivariable_input(component, stream_name: str, n_timesteps: int) -> No
     Raises:
         KeyError: If *stream_name* is not in :data:`multivariable_streams`.
     """
-    for var_name, var_props in multivariable_streams[stream_name].items():
+    stream_dict = getattr(component.config, stream_name)
+    for var_name, var_props in stream_dict.items():
         component.add_input(
             f"{stream_name}:{var_name}_in",
             val=0.0,

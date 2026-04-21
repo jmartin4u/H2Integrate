@@ -3,6 +3,10 @@ from attrs import field, define
 
 from h2integrate.core.utilities import merge_shared_inputs
 from h2integrate.core.validators import range_val
+from h2integrate.core.commodity_stream_definitions import (
+    add_multivariable_input,
+    add_multivariable_output,
+)
 from h2integrate.converters.hydrogen.geologic.h2_well_subsurface_baseclass import (
     GeoH2SubsurfacePerformanceConfig,
     GeoH2SubsurfacePerformanceBaseClass,
@@ -54,6 +58,19 @@ class NaturalGeoH2PerformanceConfig(GeoH2SubsurfacePerformanceConfig):
                 - 'b' (float): Loss rate.
                 - 'fit_name' (str): Name of the well fit to use. If provided, overrides Di and b.
                     Options are "Eagle_Ford" or "Permian" or "Bakken".
+
+        bottomhole_multiphase (float):
+            The multiphase stream conditions at the bottom of the well. Items:
+            - "pressure" (float): Bottomhole pressure (psia)
+            - "temperature" (float): Bottomhole temperature (°F)
+            - "brine_rate" (float): Brine flow rate in barrels per day (bpd)
+            - "salinity" (float): Salinity of the brine in wt%
+            - "ratio_rsw" (float): ratio of gas:water in std. cubic feet per std. barrel (scf/stb)
+            - "gas_h2_mol_pct" (float): molar percentage of hydrogen in the gas phase (mol%)
+            - "gas_ch4_mol_pct" (float): molar percentage of methane in the gas phase (mol%)
+            - "gas_n2_mol_pct" (float): molar percentage of nitrogen in the gas phase (mol%)
+            - "gas_h2o_mol_pct" (float): molar percentage of water vapor in the gas phase (mol%)
+            - "gas_co2_mol_pct" (float): molar percentage of carbon dioxide in the gas phase (mol%)
     """
 
     use_prospectivity: bool = field()
@@ -66,6 +83,7 @@ class NaturalGeoH2PerformanceConfig(GeoH2SubsurfacePerformanceConfig):
     gas_reservoir_size: float = field()
     use_arps_decline_curve: bool = field()
     decline_fit_params: dict = field(default=None)
+    bottomhole_multiphase: dict = field(default=None)
 
 
 class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
@@ -96,13 +114,24 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
             Hydrogen flow rate measured immediately after well completion, in kilograms
             per hour (kg/h).
 
-
         gas_reservoir_size (float):
             Total mass of hydrogen stored in the subsurface accumulation, in tonnes (t).
 
         grain_size (float):
             Rock grain size influencing hydrogen diffusion and reaction rates, in meters
             (inherited from base class).
+
+        bottomhole_multiphase (multivariable stream):
+            Multivariable stream representing the multiphase conditions at the bottom of the well,
+            if bottomhole multiphase conditions are provided. Constituent variables include:
+            - "pressure_in" (float): Wellhead pressure (psia)
+            - "temperature_in" (float): Wellhead temperature (°F)
+            - "gas_flow_rate_in" (float): Gas flow rate in standard cubic feet per day (scfd)
+            - "gas_h2_mol_pct_in" (float): Molar percent of hydrogen in gas phase (mol%)
+            - "gas_ch4_mol_pct_in" (float): Molar percent of methane in gas phase (mol%)
+            - "gas_n2_mol_pct_in" (float): Molar percent of nitrogen in gas phase (mol%)
+            - "gas_h2o_mol_pct_in" (float): Molar percent of water vapor in gas phase (mol%)
+            - "gas_co2_mol_pct_in" (float): Molar percent of carbon dioxide in gas phase (mol%)
 
     Outputs:
         wellhead_h2_concentration_mass (float):
@@ -139,6 +168,18 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
         capacity_factor (list):
             List of capacity factors for each year of the simulation, calculated as the ratio
             of annual hydrogen production to the maximum hydrogen production of the well.
+
+        wellhead_multiphase (multivariable stream):
+            Multivariable stream representing the multiphase conditions at the wellhead, if
+            bottomhole multiphase conditions are provided. Constituent variables include:
+            - "pressure_out" (float): Wellhead pressure (psia)
+            - "temperature_out" (float): Wellhead temperature (°F)
+            - "gas_flow_rate_out" (float): Gas flow rate in standard cubic feet per day (scfd)
+            - "gas_h2_mol_pct_out" (float): Molar percent of hydrogen in gas phase (mol%)
+            - "gas_ch4_mol_pct_out" (float): Molar percent of methane in gas phase (mol%)
+            - "gas_n2_mol_pct_out" (float): Molar percent of nitrogen in gas phase (mol%)
+            - "gas_h2o_mol_pct_out" (float): Molar percent of water vapor in gas phase (mol%)
+            - "gas_co2_mol_pct_out" (float): Molar percent of carbon dioxide in gas phase (mol%)
     """
 
     _time_step_bounds = (
@@ -168,12 +209,16 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
             val=self.config.percent_increase_during_rampup,
             desc="Percent increase in wellhead flow during ramp-up period in percent (%)",
         )
+        if self.config.bottomhole_multiphase is not None:
+            add_multivariable_input(self, "bottomhole_multiphase", n_timesteps)
 
         self.add_output("wellhead_h2_concentration_mass", units="percent")
         self.add_output("wellhead_h2_concentration_mol", units="percent")
         self.add_output("lifetime_wellhead_flow", units="kg/h")
         self.add_output("wellhead_gas_out_natural", units="kg/h", shape=(n_timesteps,))
         self.add_output("max_wellhead_gas", units="kg/h")
+        if self.config.bottomhole_multiphase is not None:
+            add_multivariable_output(self, "wellhead_multiphase", n_timesteps)
 
     def compute(self, inputs, outputs):
         n_timesteps = self.options["plant_config"]["plant"]["simulation"]["n_timesteps"]
@@ -267,6 +312,14 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
             yearly_h2_produced = np.sum(h2_flow[start_idx:end_idx])
             yearly_h2.append(yearly_h2_produced)
             yearly_h2_cf.append(yearly_h2_produced / max_h2_produced)
+
+        # For now: just pass bottomhole multiphase conditions to wellhead multiphase conditions
+        # TODO: Work in Roy's multiphase model
+        if self.config.bottomhole_multiphase is not None:
+            for var_name in self.config.bottomhole_multiphase.keys():
+                outputs[f"wellhead_multiphase:{var_name}_out"] = inputs[
+                    f"bottomhole_multiphase:{var_name}_in"
+                ]
 
         # Parse outputs
         outputs["wellhead_h2_concentration_mass"] = w_h2 * 100
