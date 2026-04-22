@@ -35,7 +35,9 @@ multivariable_streams = {
 }
 
 
-def add_multivariable_output(component, stream_name: str, n_timesteps: int) -> None:
+def add_multivariable_output(
+    component, stream_name: str, n_timesteps: int, stream_dict=multivariable_streams
+) -> None:
     """Add all constituent variables of a multivariable stream as outputs.
 
     For each variable defined in ``multivariable_streams[stream_name]``, an
@@ -49,18 +51,19 @@ def add_multivariable_output(component, stream_name: str, n_timesteps: int) -> N
     Raises:
         KeyError: If *stream_name* is not in :data:`multivariable_streams`.
     """
-    stream_dict = getattr(component.config, stream_name)
-    for var_name, var_props in stream_dict.items():
+    for var_name, var_props in stream_dict[stream_name].items():
         component.add_output(
             f"{stream_name}:{var_name}_out",
-            val=0.0,
+            val=var_props.get("val", 0.0),
             shape=n_timesteps,
             units=var_props.get("units"),
             desc=var_props.get("desc", ""),
         )
 
 
-def add_multivariable_input(component, stream_name: str, n_timesteps: int) -> None:
+def add_multivariable_input(
+    component, stream_name: str, n_timesteps: int, stream_dict=multivariable_streams
+) -> None:
     """Add all constituent variables of a multivariable stream as inputs.
 
     For each variable defined in ``multivariable_streams[stream_name]``, an
@@ -74,11 +77,10 @@ def add_multivariable_input(component, stream_name: str, n_timesteps: int) -> No
     Raises:
         KeyError: If *stream_name* is not in :data:`multivariable_streams`.
     """
-    stream_dict = getattr(component.config, stream_name)
-    for var_name, var_props in stream_dict.items():
+    for var_name, var_props in stream_dict[stream_name].items():
         component.add_input(
             f"{stream_name}:{var_name}_in",
-            val=0.0,
+            val=var_props.get("val", 0.0),
             shape=n_timesteps,
             units=var_props.get("units"),
             desc=var_props.get("desc", ""),

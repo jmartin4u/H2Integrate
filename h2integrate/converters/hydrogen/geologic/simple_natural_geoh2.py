@@ -124,9 +124,11 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
         bottomhole_multiphase (multivariable stream):
             Multivariable stream representing the multiphase conditions at the bottom of the well,
             if bottomhole multiphase conditions are provided. Constituent variables include:
-            - "pressure_in" (float): Wellhead pressure (psia)
-            - "temperature_in" (float): Wellhead temperature (°F)
-            - "gas_flow_rate_in" (float): Gas flow rate in standard cubic feet per day (scfd)
+            - "pressure_in" (float): Bottomhole pressure (psia)
+            - "temperature_in" (float): Bottomhole temperature (°F)
+            - "brine_rate_in" (float): Brine flow rate (kg/d) #TODO: convert bpd
+            - "salinity_in" (float): Salinity of the brine (wt%)
+            - "ratio_rsw_in" (float): ratio of gas vol.:water mass (ft^3/kg) #TODO: covert bpd
             - "gas_h2_mol_pct_in" (float): Molar percent of hydrogen in gas phase (mol%)
             - "gas_ch4_mol_pct_in" (float): Molar percent of methane in gas phase (mol%)
             - "gas_n2_mol_pct_in" (float): Molar percent of nitrogen in gas phase (mol%)
@@ -174,7 +176,9 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
             bottomhole multiphase conditions are provided. Constituent variables include:
             - "pressure_out" (float): Wellhead pressure (psia)
             - "temperature_out" (float): Wellhead temperature (°F)
-            - "gas_flow_rate_out" (float): Gas flow rate in standard cubic feet per day (scfd)
+            - "brine_rate_out" (float): Brine flow rate (kg/d) #TODO: convert bpd
+            - "salinity_out" (float): Salinity of the brine (wt%)
+            - "ratio_rsw_out" (float): ratio of gas vol.:water mass (ft^3/kg) #TODO: covert bpd
             - "gas_h2_mol_pct_out" (float): Molar percent of hydrogen in gas phase (mol%)
             - "gas_ch4_mol_pct_out" (float): Molar percent of methane in gas phase (mol%)
             - "gas_n2_mol_pct_out" (float): Molar percent of nitrogen in gas phase (mol%)
@@ -210,7 +214,10 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
             desc="Percent increase in wellhead flow during ramp-up period in percent (%)",
         )
         if self.config.bottomhole_multiphase is not None:
-            add_multivariable_input(self, "bottomhole_multiphase", n_timesteps)
+            multiphase_dict = {"bottomhole_multiphase": self.config.bottomhole_multiphase}
+            add_multivariable_input(
+                self, "bottomhole_multiphase", n_timesteps, stream_dict=multiphase_dict
+            )
 
         self.add_output("wellhead_h2_concentration_mass", units="percent")
         self.add_output("wellhead_h2_concentration_mol", units="percent")
@@ -218,7 +225,10 @@ class NaturalGeoH2PerformanceModel(GeoH2SubsurfacePerformanceBaseClass):
         self.add_output("wellhead_gas_out_natural", units="kg/h", shape=(n_timesteps,))
         self.add_output("max_wellhead_gas", units="kg/h")
         if self.config.bottomhole_multiphase is not None:
-            add_multivariable_output(self, "wellhead_multiphase", n_timesteps)
+            multiphase_dict = {"wellhead_multiphase": self.config.bottomhole_multiphase}
+            add_multivariable_output(
+                self, "wellhead_multiphase", n_timesteps, stream_dict=multiphase_dict
+            )
 
     def compute(self, inputs, outputs):
         n_timesteps = self.options["plant_config"]["plant"]["simulation"]["n_timesteps"]
