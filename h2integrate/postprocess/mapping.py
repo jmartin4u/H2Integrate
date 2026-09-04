@@ -416,22 +416,23 @@ def plot_geospatial_point_heat_map(
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
 
     # Plot data labels
-    for idx, result in results_gdf.iterrows():
-        labeltext = f"{result[metric_to_plot]:{map_preferences.label_format_string}}"
-        ax.annotate(
-            text=labeltext,
-            xy=(result.geometry.x, result.geometry.y),
-            xytext=(
-                map_preferences.label_offset_x[idx],
-                map_preferences.label_offset_y[idx],
-            ),
-            textcoords="offset points",
-            fontsize=map_preferences.colorbar_tick_label_font_size,
-            backgroundcolor="white",
-            zorder=map_preferences.zorder - 1,
-            horizontalalignment=map_preferences.horz_alignment[idx],
-            verticalalignment=map_preferences.vert_alignment[idx],
-        )
+    if len(map_preferences.label_format_string) > 0:
+        for idx, result in results_gdf.iterrows():
+            labeltext = f"{result[metric_to_plot]:{map_preferences.label_format_string}}"
+            ax.annotate(
+                text=labeltext,
+                xy=(result.geometry.x, result.geometry.y),
+                xytext=(
+                    map_preferences.label_offset_x[idx],
+                    map_preferences.label_offset_y[idx],
+                ),
+                textcoords="offset points",
+                fontsize=map_preferences.colorbar_tick_label_font_size,
+                # backgroundcolor="white",
+                zorder=map_preferences.zorder - 1,
+                horizontalalignment=map_preferences.horz_alignment[idx],
+                verticalalignment=map_preferences.vert_alignment[idx],
+            )
 
     # If data is text, just plot a single color for all points,
     # otherwise plot the heat map with colormap
@@ -459,8 +460,11 @@ def plot_geospatial_point_heat_map(
             zorder=map_preferences.zorder,
         )
 
-    # Create legend if data is text
-    if results_gdf[metric_to_plot].dtype not in (np.float64, np.float32, np.int64, np.int32):
+    # Create legend if data is text or legend label is set
+    if (
+        results_gdf[metric_to_plot].dtype not in (np.float64, np.float32, np.int64, np.int32)
+        or map_preferences.legend_label is not None
+    ):
         leg_texts.append(map_preferences.legend_label)
         plt.legend(
             leg_texts,
@@ -470,8 +474,8 @@ def plot_geospatial_point_heat_map(
             bbox_transform=ax.transAxes,
         )
 
-    # Otherwise, create inset axis for color bar legend
-    else:
+    # Create inset axis for color bar legend if data is numeric
+    if results_gdf[metric_to_plot].dtype in (np.float64, np.float32, np.int64, np.int32):
         inset_ax = inset_axes(
             ax,
             width=map_preferences.colorbar_width,
