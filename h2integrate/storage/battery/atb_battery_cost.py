@@ -86,6 +86,12 @@ class ATBBatteryCostModel(CostModelBaseClass):
             units=self.config.commodity_amount_units,
             desc="Battery storage capacity",
         )
+        self.add_input(
+            "power_capex",
+            val=self.config.power_capex,
+            units="USD/kW",
+            desc="Battery power cost in USD/kW",
+        )
 
     def compute(self, inputs, outputs, discrete_inputs, discrete_outputs):
         storage_duration_hrs = 0.0
@@ -109,9 +115,9 @@ class ATBBatteryCostModel(CostModelBaseClass):
             )
             raise UserWarning(msg)
         # CapEx equation from Cell E29
-        total_system_cost = (
-            storage_duration_hrs * self.config.energy_capex
-        ) + self.config.power_capex
+        total_system_cost = (storage_duration_hrs * self.config.energy_capex) + inputs[
+            "power_capex"
+        ][0]
         capex = total_system_cost * max_charge_rate_kW
         # OpEx equation from cells in the Fixed Operation and Maintenance Expenses section
         opex = self.config.opex_fraction * capex
