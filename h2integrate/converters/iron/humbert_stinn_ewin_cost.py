@@ -57,7 +57,7 @@ class HumbertStinnEwinCostComponentConfig(CostModelBaseConfig):
         validator=validators.in_(["ahe", "mse", "moe"]),
     )  # product selection
     # Set cost year to 2018 - fixed for Stinn modeling
-    cost_year: int = field(default=2018, converter=int, validator=validators.in_([2018]))
+    cost_year: int = field(default=2018, converter=int, validator=validators.ge(1900))
     labor_rate_cost: float = field(default=55.90)
     anode_cost_per_tonne: float = field(default=1660.716)
     annual_labor_hours_per_position: int | float = field(default=2000)

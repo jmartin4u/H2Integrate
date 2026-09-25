@@ -14,7 +14,7 @@ from h2integrate.tools.inflation.inflate import inflate_cpi
 
 MINE_LOCATIONS = {
     "Hibbing": {"latitude": 47.53, "longitude": -92.91},
-    "Northshore": {"latitude": 47.29, "longitude": -91.25},
+    "Northshore": {"latitude": 47.68, "longitude": -91.86},
     "United": {"latitude": 47.34, "longitude": -92.58},
     "Minorca": {"latitude": 47.55, "longitude": -92.52},
     "Tilden": {"latitude": 46.48, "longitude": -87.66},

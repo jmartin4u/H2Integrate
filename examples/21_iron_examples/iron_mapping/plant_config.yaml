@@ -2,8 +2,8 @@ name: plant_config
 description: This file contains plant-specific parameters for the iron mapping example.
 sites:
   ore_site:
-    latitude: 47.29415278
-    longitude: -91.25649444
+    latitude: 47.68
+    longitude: -91.86
   dri_site:
     latitude: 41.6673847
     longitude: -83.4837739
