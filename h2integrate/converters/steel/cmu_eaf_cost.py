@@ -120,17 +120,11 @@ class CMUElectricArcFurnaceCostModel(CostModelBaseClass):
         # > Financial Conversion
         # CE Index (original year 2018), '6. Production Cost!F114' > '6. Production Cost!E151'
         CEPCI_index_2018 = 603.1
-        # USD conversion for 2018, '6. Production Cost!D151'
-        USD_financial_conversion_2018 = 1.180185
 
         # > CAPEX by Technology Lookup Table
-        # $/ton steel capacity annually, EAF (mid) '6. Production Cost!C114'
-        reported_levelized_capex = (
-            self.config.capex_usd_per_tonne_capacity * USD_financial_conversion_2018
-        )
         # $/ton steel capacity annually, EAF (mid) '6. Production Cost!G114' (capex_tpa)
         inflation_adjusted_levelized_capex = (
-            reported_levelized_capex * CEPCI_index_2022 / CEPCI_index_2018
+            self.config.capex_usd_per_tonne_capacity * CEPCI_index_2022 / CEPCI_index_2018
         )
         # > CAPEX by pathway node
         # $, '6. Production Cost!F73'
