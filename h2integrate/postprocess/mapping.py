@@ -88,6 +88,9 @@ class GeospatialMapConfig(BaseConfig):
             See matplotlib.pyplot.colorbar orientation parameter documentation for more info.
         colorbar_limits (tuple | None, optional): A tuple used to manually set the lower and upper
             limits of the colorbar ticks and colormap normalization range. Defaults to None.
+        colorbar_tick_list (list[float], optional): A list of floats used to manually set the tick
+            marks for the colorbar. Defaults to an empty list, which will use the colorbar_num_ticks
+            to generate ticks automatically.
         colorbar_tick_location (str, optional): A string used to set the location of the tick marks
             for the colorbar. Defaults to 'bottom'.
             See matplotlib.pyplot.colorbar ticklocation parameter documentation for more info.
@@ -194,6 +197,7 @@ class GeospatialMapConfig(BaseConfig):
             ]
         ),
     )
+    colorbar_tick_list: list[float] = field(default=[])
     colorbar_tick_location: str = field(default="bottom")
     colorbar_tick_direction: str = field(default="inout")
     colorbar_tick_label_font_size: float = field(default=8.0)
@@ -416,22 +420,22 @@ def plot_geospatial_point_heat_map(
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
 
     # Plot data labels
-    for idx, result in results_gdf.iterrows():
-        labeltext = f"{result[metric_to_plot]:{map_preferences.label_format_string}}"
-        ax.annotate(
-            text=labeltext,
-            xy=(result.geometry.x, result.geometry.y),
-            xytext=(
-                map_preferences.label_offset_x[idx],
-                map_preferences.label_offset_y[idx],
-            ),
-            textcoords="offset points",
-            fontsize=map_preferences.colorbar_tick_label_font_size,
-            backgroundcolor="white",
-            zorder=map_preferences.zorder - 1,
-            horizontalalignment=map_preferences.horz_alignment[idx],
-            verticalalignment=map_preferences.vert_alignment[idx],
-        )
+    # for idx, result in results_gdf.iterrows():
+    #     labeltext = f"{result[metric_to_plot]:{map_preferences.label_format_string}}"
+    #     ax.annotate(
+    #         text=labeltext,
+    #         xy=(result.geometry.x, result.geometry.y),
+    #         xytext=(
+    #             map_preferences.label_offset_x[idx],
+    #             map_preferences.label_offset_y[idx],
+    #         ),
+    #         textcoords="offset points",
+    #         fontsize=map_preferences.colorbar_tick_label_font_size,
+    #         backgroundcolor="white",
+    #         zorder=map_preferences.zorder - 1,
+    #         horizontalalignment=map_preferences.horz_alignment[idx],
+    #         verticalalignment=map_preferences.vert_alignment[idx],
+    #     )
 
     # If data is text, just plot a single color for all points,
     # otherwise plot the heat map with colormap
@@ -506,7 +510,10 @@ def plot_geospatial_point_heat_map(
             direction=map_preferences.colorbar_tick_direction,
             labelsize=map_preferences.colorbar_tick_label_font_size,
         )
-        inset_ax.set_xticks(np.linspace(vmin, vmax, num=map_preferences.colorbar_num_ticks))
+        if len(map_preferences.colorbar_tick_list) != 0:
+            inset_ax.set_xticks(map_preferences.colorbar_tick_list)
+        else:
+            inset_ax.set_xticks(np.linspace(vmin, vmax, num=map_preferences.colorbar_num_ticks))
 
         # format color bar legend offset text and position (exp notation for values if applicable)
         cbar.formatter.set_scientific(map_preferences.colorbar_tick_label_use_exp_notation)
