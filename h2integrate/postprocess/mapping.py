@@ -3,6 +3,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import matplotlib as mpl
+import matplotlib.colors as mcolors
 import matplotlib.pyplot as plt
 from attrs import field, define, converters, validators
 from xyzservices import TileProvider
@@ -28,6 +30,29 @@ except ImportError as exc:
     raise ImportError(msg) from exc
 
 
+def truncate_colormap(cmap_name, minval=0.0, maxval=1.0, n=100):
+    """
+    Truncates a Matplotlib colormap to a specific range.
+
+    Parameters:
+    - cmap_name: str, name of the existing colormap (e.g., 'viridis')
+    - minval: float, the starting point of the subset (0.0 to 1.0)
+    - maxval: float, the ending point of the subset (0.0 to 1.0)
+    - n: int, number of color samples to interpolate
+    """
+    # Fetch the original colormap
+    cmap = plt.get_cmap(cmap_name)
+
+    # Sample colors across the truncated range
+    truncated_colors = cmap(np.linspace(minval, maxval, n))
+
+    # Create and return a new colormap from the sampled colors
+    new_cmap = mcolors.LinearSegmentedColormap.from_list(
+        f"trunc({cmap.name},{minval:.2f},{maxval:.2f})", truncated_colors
+    )
+    return new_cmap
+
+
 @define
 class GeospatialMapConfig(BaseConfig):
     """
@@ -48,6 +73,8 @@ class GeospatialMapConfig(BaseConfig):
             Defaults to 'UPDATE TITLE'.
         colormap (str, optional): A string used to set the gpd.GeoDataFrame.plot() cmap parameter.
             Defaults to 'plasma_r'.
+        colormap_n (int, optional): An integer used to set the number of discrete colors in the
+            colormap. Defaults to 256.
         alpha (float, optional): A float used to set the gpd.GeoDataFrame.plot() alpha parameter.
             Defaults to 0.8.
         marker (str, optional): A string used to set the gpd.GeoDataFrame.plot() marker parameter.
@@ -167,6 +194,7 @@ class GeospatialMapConfig(BaseConfig):
     constrained_layout: bool = field(default=True)
     figure_title: str = field(default="UPDATE TITLE")
     colormap: str = field(default="plasma_r")
+    colormap_n: int = field(default=256)
     alpha: float = field(default=0.8)
     marker: str = field(default="s")
     markersize: float = field(default=36.0)
@@ -451,10 +479,14 @@ def plot_geospatial_point_heat_map(
             zorder=map_preferences.zorder,
         )
     else:
+        resampled_cmap = mpl.colormaps[map_preferences.colormap].resampled(
+            map_preferences.colormap_n
+        )
+        # resampled_cmap = truncate_colormap(resampled_cmap, minval=2/9, maxval=1, n=1000)
         results_gdf.plot(
             ax=ax,
             column=metric_to_plot,
-            cmap=map_preferences.colormap,
+            cmap=resampled_cmap,
             alpha=map_preferences.alpha,
             marker=map_preferences.marker,
             markersize=map_preferences.markersize,
@@ -463,19 +495,19 @@ def plot_geospatial_point_heat_map(
             zorder=map_preferences.zorder,
         )
 
-    # Create legend if data is text or legend label is set
-    if (
-        results_gdf[metric_to_plot].dtype not in (np.float64, np.float32, np.int64, np.int32)
-        or map_preferences.legend_label is not None
-    ):
-        leg_texts.append(map_preferences.legend_label)
-        plt.legend(
-            leg_texts,
-            title=map_preferences.colorbar_label,
-            frameon=True,
-            bbox_to_anchor=map_preferences.colorbar_bbox_to_anchor,
-            bbox_transform=ax.transAxes,
-        )
+    # # Create legend if data is text or legend label is set
+    # if (
+    #     results_gdf[metric_to_plot].dtype not in (np.float64, np.float32, np.int64, np.int32)
+    #     or map_preferences.legend_label is not None
+    # ):
+    #     leg_texts.append(map_preferences.legend_label)
+    #     plt.legend(
+    #         leg_texts,
+    #         title=map_preferences.colorbar_label,
+    #         frameon=True,
+    #         bbox_to_anchor=map_preferences.colorbar_bbox_to_anchor,
+    #         bbox_transform=ax.transAxes,
+    #     )
 
     # Create inset axis for color bar legend if data is numeric
     if results_gdf[metric_to_plot].dtype in (np.float64, np.float32, np.int64, np.int32):
@@ -489,7 +521,11 @@ def plot_geospatial_point_heat_map(
             borderpad=map_preferences.colorbar_borderpad,
         )
 
-        sm = plt.cm.ScalarMappable(cmap=map_preferences.colormap, norm=norm)
+        resampled_cmap = mpl.colormaps[map_preferences.colormap].resampled(
+            map_preferences.colormap_n
+        )
+        # resampled_cmap = truncate_colormap(resampled_cmap, minval=2/9, maxval=1, n=1000)
+        sm = plt.cm.ScalarMappable(cmap=resampled_cmap, norm=norm)
 
         cbar = plt.colorbar(
             sm,
